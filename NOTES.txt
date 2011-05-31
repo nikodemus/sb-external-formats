@@ -1,0 +1,51 @@
+BOM is still an open question...
+
+ASCII encoding OK, CRLF performance acceptable.
+
+Decoding?
+
+Plan:
+ - ASCII
+ - UTF8
+ - Other unibyte formats
+ - Other UTF-formats
+ - ENCODING-STREAM, DECODING-STREAM
+
+FIXME
+ - currently assumes at most code entries per newline?
+
+API & DESIGN
+
+* Entry Points
+
+  ENCODED-LENGTH, DECODED-LENGTH
+
+  ENCODE-STRING, DECODE-OCTETS
+
+  ENCODE-STRING-INTO, DECODE-OCTETS-INTO
+
+Encoding/Decoding Method:
+
+ From source to destination, till everything is done or
+ destination is full.
+
+Sources and Sinks:
+
+ SAPs or sequences of octets.
+
+ Strings.
+
+Enconding Objects
+
+ Contain the methods for computing the length, encoding,
+ and decoding.
+
+ Contain encodings for different styles of line endings.
+
+External Format Objects
+
+ Contains an encoding, a selection of line ending style,
+ and an error handling method.
+
+
+  
