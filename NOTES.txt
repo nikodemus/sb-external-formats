@@ -2,6 +2,8 @@ BOM is still an open question...
 
 ASCII encoding OK, CRLF performance acceptable.
 
+UTF-8 encoding OK, 
+
 Decoding?
 
 Plan:
