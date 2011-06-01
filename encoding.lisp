@@ -5,6 +5,15 @@
     (declare (ignore args))
     (error "~S not available for this character encoding." slot)))
 
+;;;; A CHARACTER-ENCODING object manages all encoding and decoding
+;;;; related activities.
+;;;;
+;;;; It contains functions that perform those duties for the encoding
+;;;; in question.
+;;;;
+;;;; An EXTERNAL-FORMAT object is a combination of a CHARACTER-ENCODING
+;;;; and an EOL policy, and an error handling policy.
+
 (defstruct character-encoding
   ;; Canonical name.
   (name nil :type symbol)
@@ -12,31 +21,18 @@
   (nicknames nil :type name-list)
   ;; Documentation
   (documentation nil :type (or null string))
-  ;; These implement the guts of ENCODE-STRING and DECODE-OCTETS for this
-  ;; encoding.
+  ;; These implement the guts of ENCODE-STRING and DECODE-OCTETS.
   (encoder (encoding-stub 'encoder) :type function)
   (decoder (encoding-stub 'decoder) :type function)
-  ;; These implement the guts of DECODED-LENGTH and ENCODED-LENGTH for this
-  ;; encoding.
-  (decoded-length (encoding-stub 'decoded-length) :type function)
+  ;; These implement the guts of ENCODED-LENGTH and DECODED-LENGTH.
   (encoded-length (encoding-stub 'encoded-length) :type function)
-  ;; For guesstimate of how large a string or a vector to allocate.
-  #+nil
-  (average-character-bytes 1 :type index)
-  ;; Information on how different EOL styles are encoded.
-  (eol-info nil :type list)
-  ;; Source location.
+  (decoded-length (encoding-stub 'decoded-length) :type function)
+  ;; These implement the guts of GUESS-ENCODED-LENGTH and GUESS-DECODED-LENGTH.
+  (guess-necoded-length (encoding-stub 'guess-encoded-length) :type function)
+  (guess-decoded-length (encoding-stub 'guess-decoded-length) :type function)
+  ;; Source location for the DEFINE-CHARACTER-ENCODING.
   (source-location nil))
 
-(defun %encoded-length (encoding string start length limit code1 code2)
-  (funcall (character-encoding-encoded-length encoding)
-           string start length limit code1 code2))
-
-(defun %decoded-length (encoding string start length limit code1 code2)
-  (funcall (character-encoding-decoded-length encoding)
-           string start length limit code1 code2))
-
-(declaim (inline %encode))
 (defun %encode (encoding string string-offset buf buf-offset count x eol)
   (funcall (character-encoding-encoder encoding)
            string string-offset buf buf-offset count x eol))
@@ -45,9 +41,20 @@
   (funcall (character-encoding-decoder encoding)
            octets octets-offset sap sap-offset count x eol))
 
+#+nil ; FIXME
+(defun %encoded-length (encoding string start length limit code1 code2)
+  (funcall (character-encoding-encoded-length encoding)
+           string start length limit code1 code2))
+
+#+nil ; FIXME
+(defun %decoded-length (encoding string start length limit code1 code2)
+  (funcall (character-encoding-decoded-length encoding)
+           string start length limit code1 code2))
+
 (defparameter *character-encodings* (make-hash-table :test 'eq :synchronized t))
 
-;;; Removes a CHARACTER-ENCODING from *CHARACTER-ENCODINGS*, and clears its NAME and NICKNAMES.
+;;; Removes a CHARACTER-ENCODING from *CHARACTER-ENCODINGS*, and
+;;; clears its NAME and NICKNAMES.
 (defun delete-character-encoding (encoding)
   (let ((table *character-encodings*))
     (with-locked-hash-table (table)
@@ -61,33 +68,39 @@
             (character-encoding-nicknames encoding) nil)))
   encoding)
 
-;;; Adds CHARACTER-ENCODING to *CHARACTER-ENCODINGS* under NAME and NICKNAMES, replacing any old
-;;; name and nicknames it has.
+;;; Adds CHARACTER-ENCODING to *CHARACTER-ENCODINGS* under NAME and
+;;; NICKNAMES, replacing any old name and nicknames it has.
 (defun rename-character-encoding (encoding name &optional nicknames)
   (let ((table *character-encodings*)
-        (names (cons name nicknames)))
-    (with-locked-hash-table (table)
-      ;; Check that the names we want are not taken by others.
-      (dolist (nick names)
-        (awhen (gethash nick table)
-          (unless (eq encoding it)
-            (error "~S already names a character encoding: ~S."
-                   name it))))
-      ;; Detach from old names.
-      (flet ((drop (nick)
-               (aver (eq encoding (gethash nick table)))
-               (remhash nick table)))
-        (awhen (character-encoding-name encoding)
-          (unless (eq name it)
-            (drop it)))
-        (dolist (nick (character-encoding-nicknames encoding))
-          (unless (member nick nicknames :test #'eq)
-            (drop nick))))
-      ;; Attach to new names.
-      (setf (character-encoding-name encoding) name
-            (character-encoding-nicknames encoding) nicknames)
-      (dolist (nick names)
-        (setf (gethash name table) encoding)))
+        (names (cons name nicknames))
+        (problem nil))
+    (tagbody
+       (with-locked-hash-table (table)
+         ;; Check that the names we want are not taken by others.
+         (dolist (nick names)
+           (awhen (gethash nick table)
+             (unless (eq encoding it)
+               (setf problem (cons name it))
+               (go :error))))
+         ;; Detach from old names.
+         (flet ((drop (nick)
+                  (aver (eq encoding (gethash nick table)))
+                  (remhash nick table)))
+           (awhen (character-encoding-name encoding)
+             (unless (eq name it)
+               (drop it)))
+           (dolist (nick (character-encoding-nicknames encoding))
+             (unless (member nick nicknames :test #'eq)
+               (drop nick))))
+         ;; Attach to new names.
+         (setf (character-encoding-name encoding) name
+               (character-encoding-nicknames encoding) nicknames)
+         (dolist (nick names)
+           (setf (gethash nick table) encoding)))
+     :error
+       (when problem
+         (error "~S already names a character encoding: ~S."
+                (car problem) (cdr problem))))
     encoding))
 
 (define-condition unknown-character-encoding-error (cell-error) ()

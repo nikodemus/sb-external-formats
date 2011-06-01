@@ -9,7 +9,6 @@ SB-EXTERNAL-FORMAT
 *** TODO figure out how to do BOM
 *** TODO hook into SBCL
 *** TODO replacement characters and other error handling options
-*** TODO nicknames should work
 *** TODO DOCUMENTATION EXTERNAL-FORMAT
 * Performance
 *** TODO LATIN-1 slow compared to current.

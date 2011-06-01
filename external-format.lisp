@@ -22,12 +22,4 @@
         :character-encoding (find-character-encoding name errorp)
         :eol-style eol-style)))))
 
-(defun external-format-eol-info (external-format)
-  (let* ((format (find-external-format external-format t))
-         (encoding (external-format-character-encoding external-format)))
-    (cdr (or (assoc (external-format-eol-style format)
-                    (character-encoding-eol-info encoding))
-             (error "~S is not a supported EOL style with ~S."
-                    (external-format-eol-style format)
-                    encoding)))))
 
