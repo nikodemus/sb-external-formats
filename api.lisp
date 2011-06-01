@@ -102,6 +102,7 @@ type \(VECTOR \(UNSIGNED-BYTE 8))."
                           (push buffer buffers)
                           (decf count consumed)))))))))
 
+;;; FIXME: add ELEMENT-TYPE
 (defun decode-octets (octets &key (start 0) end (external-format :default))
   (let* ((format (find-external-format external-format))
          (encoding (external-format-character-encoding format))
@@ -112,11 +113,38 @@ type \(VECTOR \(UNSIGNED-BYTE 8))."
                                 (s-end end)
                                 :check-fill-pointer t)
       (with-pinned-objects (s-octets)
-        (let* ((sap (vector-sap s-octets))
-               (size (%decoded-length encoding sap s-start (- s-end s-start) nil
-                                      char-code-0 char-code-1))
-               (buffer (make-array (the fixnum size) :element-type 'character)))
-          (%decode encoding sap
-                   s-start buffer 0 (- s-end s-start)
-                   nil char-code-0 char-code-1)
-          buffer)))))
+        (let ((count (- s-end s-start))
+              (newline-interval 80)
+              (offset s-start)
+              (total-size 0)
+              (buffers nil))
+          (declare (index count total-size newline-interval offset))
+          ;; FIXME: better guesstimation: add alloc-string and
+          ;; alloc-octets methods to encoding: random-sampling of the
+          ;; input to determine how many octets per character, and
+          ;; trying to determine the size of typical lines.
+          (loop for alloc = count
+                for buffer = (make-array alloc :element-type 'character)
+                do (multiple-value-bind (consumed decoded end)
+                       (%decode encoding s-octets offset buffer 0 count alloc eol)
+                     (declare (index consumed decoded))
+                     (incf offset consumed)
+                     (incf total-size decoded)
+                     (sb-kernel:%shrink-vector buffer decoded)
+                     (cond ((or end (eql consumed count))
+                            (return-from decode-octets
+                              (let ((total-consumed (- offset s-start)))
+                                (if buffers
+                                    (let ((result (make-array total-size :element-type 'character))
+                                          (p 0))
+                                      (dolist (buf (nreverse (cons buffer buffers)))
+                                        (declare (type (simple-array character (*)) buf))
+                                        (replace result buf :start1 p)
+                                        (incf p (length buf)))
+                                      (values result total-consumed))
+                                    (values buffer total-consumed)))))
+                           (t
+                            (when (>= 20 newline-interval)
+                              (setf newline-interval (truncate newline-interval 4)))
+                            (push buffer buffers)
+                            (decf count consumed))))))))))

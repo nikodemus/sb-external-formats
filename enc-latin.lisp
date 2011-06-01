@@ -8,3 +8,8 @@
   (if (> char-code 255)
       (handle-error)
       char-code))
+
+(define-unibyte-decoder :latin-1 (octet)
+  (if (> octet 255)
+      (handle-error)
+      octet))

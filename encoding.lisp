@@ -41,9 +41,9 @@
   (funcall (character-encoding-encoder encoding)
            string string-offset buf buf-offset count x eol))
 
-(defun %decode (encoding string string-offset sap sap-offset count x code1 code2)
+(defun %decode (encoding octets octets-offset sap sap-offset count x eol)
   (funcall (character-encoding-decoder encoding)
-           string string-offset sap sap-offset count x code1 code2))
+           octets octets-offset sap sap-offset count x eol))
 
 (defparameter *character-encodings* (make-hash-table :test 'eq :synchronized t))
 
@@ -118,7 +118,7 @@
          (delete-character-encoding old))
        (rename-character-encoding new ',name ',nicknames))))
 
-(defmacro do-code ((code char) &body body)
+(defmacro do-encode ((code char) &body body)
   (let (styles)
     (loop repeat 2
           do (let ((style (pop body)))
@@ -174,16 +174,80 @@
              (let ((encoding (find-character-encoding ',encoding t)))
                (setf (character-encoding-encoder encoding) #',name)))))
 
-(defmacro defdecoder (encoding (src src-offset dst dst-offset length limit eol-0 eol-1) &body body)
-  `(let ((encoding (find-character-encoding ',encoding)))
-     (setf (character-encoding-decoder encoding)
-           (named-lambda ,(symbolicate encoding "-DECODER")
-               (,src ,src-offset ,dst ,dst-offset ,length ,limit ,eol-0 ,eol-1)
-             (declare (system-area-pointer ,src)
-                      (string ,dst)
-                      (index ,src-offset ,dst-offset ,length ,eol-0)
-                      (type (or null index) ,eol-1))
-             ,@body))))
+(define-symbol-macro set-char-code-eol-style nil)
+(define-symbol-macro set-char-code-eol-mark nil)
+(define-symbol-macro set-char-code-dst nil)
+(define-symbol-macro set-char-code-dst-offset nil)
+
+(defmacro set-char-code (index char-code &environment env)
+  (let ((dst (or (macroexpand 'set-char-code-dst env)
+                 (make-symbol "?-DST")))
+        (dst-offset (or (macroexpand 'set-char-code-dst-offset env)
+                        (make-symbol "?-DST-OFFSET")))
+        (eol-mark (or (macroexpand 'set-char-code-eol-mark env)
+                      (make-symbol "?-EOL-MARK"))))
+    (with-unique-names (code)
+      `(let ((,code ,char-code))
+         (declare (type (integer 0 (,char-code-limit)) ,code))
+         ,@(ecase (or (macroexpand 'set-char-code-eol-style env)
+                      (restart-case
+                          (error "Not in an environment with EOL-STYLE.")
+                        (select-cr () :cr)
+                        (select-lf () :lf)
+                        (select-crlf () :crlf)))
+             (:crlf
+              ;; Using bit-operations allows us to do the comparison
+              ;; of both last character and current one with a single
+              ;; branch. If we hit a CRLF, we rewrite the last CR.
+              `((when (zerop (logior ,eol-mark (logxor ,code ,(char-code #\newline))))
+                  (setf ,index (1- ,index)))
+                (setf ,eol-mark (logxor ,code ,(char-code #\return)))
+                (setf (char ,dst (+ ,dst-offset ,index)) (code-char ,code))))
+             (:cr
+              `((when (= ,code ,(char-code #\return))
+                  (setf ,code ,(char-code #\newline)))
+                (setf (char ,dst (+ ,dst-offset ,index)) (code-char ,code))))
+             (:lf
+              `((setf (char ,dst (+ ,dst-offset ,index)) (code-char ,code)))))))))
+
+(defmacro defdecoder (encoding (src src-offset dst dst-offset length limit) &body body)
+  (with-unique-names (eol-mark eol)
+    (let ((name (symbolicate encoding "-DECODER")))
+      `(progn
+         (defun ,name (,src ,src-offset ,dst ,dst-offset ,length ,limit ,eol)
+           (declare (string ,dst)
+                    (index ,src-offset ,dst-offset ,length ,limit)
+                    (optimize speed))
+           (labels ((decode-from-sap (,src)
+                      (declare (system-area-pointer ,src))
+                      (etypecase ,dst
+                        ((simple-array character (*))
+                         (decode-to-string ,src ,dst))
+                        ((simple-array base-char (*))
+                         (decode-to-string ,src ,dst))))
+                    (decode-to-string (,src ,dst)
+                      (declare (muffle-conditions code-deletion-note))
+                      (macrolet ((using-eol (eol-style)
+                                   `(symbol-macrolet ((set-char-code-eol-style ,eol-style)
+                                                      (set-char-code-eol-mark ,',eol-mark)
+                                                      (set-char-code-dst ,',dst)
+                                                      (set-char-code-dst-offset ,',dst-offset))
+                                      ,@',body)))
+                        (let ((,eol-mark 1))
+                          (declare (sb!vm:word ,eol-mark))
+                          (ecase ,eol
+                            (:lf (using-eol :lf))
+                            (:crlf (using-eol :crlf))
+                            (:cr (using-eol :cr)))))))
+             (declare (inline decode-to-string))
+             (etypecase ,src
+               (system-area-pointer
+                (decode-from-sap ,src))
+               ((simple-array (unsigned-byte 8) (*))
+                (with-pinned-objects (,src)
+                  (decode-from-sap (vector-sap ,src)))))))
+         (let ((encoding (find-character-encoding ',encoding)))
+           (setf (character-encoding-decoder encoding) #',name))))))
 
 (defmacro define-encoded-length (encoding (src src-offset length limit eol-0 eol-1) &body body)
   `(let ((encoding (find-character-encoding ',encoding)))
@@ -239,6 +303,63 @@
              (declare (inline set-code))
              ,@body)))))
 
+(defmacro do-decode ((byte sap-form) &body body)
+  (let (styles)
+    (loop repeat 2
+          do (let ((style (pop body)))
+               (assert (member (car style) '(:cr :crlf)))
+               (assert (not (assoc (car style) styles)))
+               (push style styles)))
+    `(let ((,byte ,sap-form))
+       (ecase (eol-style)
+         (:lf (locally ,@body))
+         (:cr ,(let ((cr (second (assoc :cr styles))))
+                 `(if (= ,cr ,byte)
+                      (char-code #\newline)
+                      (locally ,@body))))
+         (:crlf ,(destructuring-bind (code0 code1) (cdr (assoc :crlf styles))
+                   (flet ((set-code (code string offset)
+                            (if (zerop (logior ,last (logxor ,code1 ,code)))
+                                ;; EOL sequence: rewrite previous as newline
+                                (setf code ,(char-code #\newline)
+                                      )
+                                ))))))
+         
+           (if (eql ,code (char-code #\newline))
+               (ecase (eol-style)
+                 (:cr ,@(cdr (assoc :cr styles)))
+                 (:crlf ,@(cdr (assoc :crlf styles))))
+               (locally ,@body)))
+       ;; This is use being cleaver: for :LF style we don't need to
+       ;; check if we have a newline, but can use the regular encode.
+       (if (eq :lf (eol-style))
+           (locally ,@body)
+           (if (eql ,code (char-code #\newline))
+               (ecase (eol-style)
+                 (:cr ,@(cdr (assoc :cr styles)))
+                 (:crlf ,@(cdr (assoc :crlf styles))))
+               (locally ,@body))))))
+
+(defmacro do-code ((code char) &body body)
+  (let (styles)
+    (loop repeat 2
+          do (let ((style (pop body)))
+               (assert (member (car style) '(:cr :crlf)))
+               (assert (not (assoc (car style) styles)))
+               (push style styles)))
+    `(let ((,code (char-code ,char)))
+       ;; This is use being cleaver: for :LF style we don't need to
+       ;; check if we have a newline, but can use the regular encode.
+       (if (eq :lf (eol-style))
+           (locally ,@body)
+           (if (eql ,code (char-code #\newline))
+               (ecase (eol-style)
+                 (:cr ,@(cdr (assoc :cr styles)))
+                 (:crlf ,@(cdr (assoc :crlf styles))))
+               (locally ,@body))))))
+
+
+
 (defun unibyte-encoded-length (src src-offset length limit eol-0 eol-1)
   (cond ((not eol-1)
          ;; Single byte EOL
@@ -284,7 +405,7 @@
                ((or (= ,i ,length) (>= ,j ,limit))
                 (values ,i ,j))
              (declare (index ,i ,j) (optimize (safety 0) (speed 3)))
-             (do-code (,char-code (char ,src (+ ,src-offset ,i)))
+             (do-encode (,char-code (char ,src (+ ,src-offset ,i)))
                (:cr
                 (setf (sap-ref-8 ,dst (+ ,dst-offset ,j)) 13)
                 (incf ,j))
@@ -303,6 +424,24 @@
        (let ((encoding (find-character-encoding ',encoding t)))
          (setf (character-encoding-encoded-length encoding)
                #'unibyte-encoded-length)))))
+
+(defmacro define-unibyte-decoder (encoding (byte) &body body)
+  (with-unique-names (src src-offset dst dst-offset length limit i j)
+    `(progn
+       (defdecoder ,encoding (,src ,src-offset ,dst ,dst-offset ,length ,limit)
+         (do ((,i 0 (1+ ,i))
+              (,j 0 (1+ ,j)))
+             ((or (= ,i ,length) (>= ,j ,limit))
+              (values ,i ,j))
+           (declare (index ,i ,j) (optimize (safety 0) (speed 3)))
+           (set-char-code ,j
+                          (macrolet ((handle-error ()
+                                       `(unibyte-decoding-error ',,encoding ,',byte)))
+                            (let ((,byte (sap-ref-8 ,src (+ ,src-offset ,i))))
+                              ,@body)))))
+       (let ((encoding (find-character-encoding ',encoding t)))
+         (setf (character-encoding-decoded-length encoding)
+               #'unibyte-decoded-length)))))
 
 (defun unibyte-decoded-length (src src-offset length limit code0 code1)
   (declare (system-area-pointer src)
@@ -356,20 +495,4 @@
             :end)
            (values chars src-offset)))))
 
-(defmacro define-unibyte-decoder (encoding (byte) &body body)
-  (with-unique-names (src src-offset dst dst-offset length limit i j)
-    `(progn
-       (defdecoder ,encoding (,src ,src-offset ,dst ,dst-offset ,length ,limit)
-         (do ((,i 0 (1+ i))
-              (,j 0))
-             ((or (= ,i ,length) (>= ,j ,limit))
-              (values ,i ,j))
-           (let* ((,byte (sap-ref-8 ,src (+ ,src-offset ,i)))
-                  (char-code
-                    (macrolet ((handle-error ()
-                                 `(unibyte-decoding-error ',,encoding ,',byte)))
-                      ,@body)))
-             (setf ,j (set-code char-code ,dst (+ ,dst-offset ,j))))))
-       (let ((encoding (find-character-encoding ',encoding t)))
-         (setf (character-encoding-decoded-length encoding)
-               #'unibyte-decoded-length)))))
+

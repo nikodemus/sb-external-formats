@@ -5,19 +5,16 @@ SB-EXTERNAL-FORMAT
 *** TODO add ENCODE-STRING-INTO
 *** TODO add DECODE-STRING and DECODE-STRING-INTO
 * Basics
-*** TODO fix decoding for the new eol-style design.
 *** TODO fix unibyte lengths for the new eol-style design.
 *** TODO figure out how to do BOM
 *** TODO hook into SBCL
 *** TODO replacement characters and other error handling options
+* Performance
+*** TODO LATIN-1 slow compared to current.
 * Formats
-*** TODO ASCII
-***** TODO decoding
 *** TODO UTF-8
-***** TODO decoding
 ***** TODO length
 *** TODO LATIN-1
-***** TODO decoding
 *** TODO LATIN-9
 *** TODO UTF-8B
 *** TODO EUC-JP
