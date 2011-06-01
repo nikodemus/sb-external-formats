@@ -8,7 +8,39 @@
 
 (defstruct external-format
   (character-encoding (missing-arg) :type character-encoding)
-  (eol-style *default-eol-style* :type eol-style))
+  (eol-style *default-eol-style* :type eol-style)
+  (name))
+
+(defconstant +bom-mark+ (code-char #xfeff))
+
+(defvar *bom-mark-map*
+  '(((#xef #xbb #xbf) :utf-8)
+    ((#xff #xfe) :utf-16le)
+    ((#xfe #xff) :utf-16be)))
+
+(defun interpret-bom (octets start count)
+  (when (>= count 2)
+    (flet ((bom-from-sap (sap)
+             (case (sap-ref-8 sap start)
+               (#xef
+                (when (and (>= count 3)
+                           (= #xbb (sap-ref-8 sap (+ start 1)))
+                           (= #xbf (sap-ref-8 sap (+ start 2))))
+                  (values :utf-8 3)))
+               (#xff
+                (when (= #xfe (sap-ref-8 sap (+ start 1)))
+                  (values :utf-16le 2)))
+               (#xfe
+                (when (= #xff (sap-ref-8 sap (+ start 1)))
+                  (values :utf-16be 2))))))
+      (etypecase octets
+        (system-area-pointer
+         (bom-from-sap octets))
+        ((simple-array (unsigned-byte 8) (*))
+         (with-pinned-objects (octets)
+           (bom-from-sap (vector-sap octets))))))))
+
+(code-char )
 
 (defun find-external-format (external-format &optional (errorp t))
   (etypecase external-format
@@ -21,5 +53,42 @@
        (make-external-format
         :character-encoding (find-character-encoding name errorp)
         :eol-style eol-style)))))
+
+(defun select-external-format (external-format octets start count)
+  (let ((name (etypecase external-format
+                (external-format
+                 (external-format-name external-format))
+                (symbol
+                 external-format)
+                (cons
+                 (car external-format)))))
+    (multiple-value-bind (real-name skip)
+        (case name
+          (:utf-16
+           ;; FIXME: Warn if BOM doesn't match the format
+           (multiple-value-bind (format bytes)
+               (interpret-bom octets start count)
+             (if format
+                 (values format bytes)
+                 (values :utf-16be 0))))
+          (t
+           (values name 0)))
+      (values
+       (typecase external-format
+         (external-format
+          (if (eq real-name name)
+              external-format
+              (make-external-format
+               :character-encoding (find-character-encoding real-name)
+               :name name
+               :eol-style (external-format-eol-style external-format))))
+         ((or cons symbol)
+          (make-external-format
+           :name name
+           :character-encoding (find-character-encoding real-name)
+           :eol-style (if (consp external-format)
+                          (getf (cdr external-format) :eol-style)
+                          *default-eol-style*))))
+       skip))))
 
 
