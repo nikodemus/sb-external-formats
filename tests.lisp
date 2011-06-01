@@ -96,6 +96,13 @@
                 s))
           *s-0-10000*))
 
+(defparameter *utf-16le-0-10000*
+  (mapcar (lambda (s)
+            (if (stringp s)
+                (string-to-octets s :external-format :utf-16le)
+                s))
+          *s-0-10000*))
+
 (defun test-encode (method strings format &optional (newline :lf))
   (ecase method
     (:new
@@ -120,7 +127,7 @@
      (babel:octets-to-string (getf octets :lf)
                              :encoding format))))
 
-(defun verify (strings format newline)
+(defun verify (strings format newline &optional dont-decode)
   (let ((a (test-encode :new strings format newline))
         (b (test-encode :old strings format newline))
         (c (test-encode :babel strings format newline)))
@@ -133,13 +140,17 @@
                 (subseq a (max 0 (- i 3)) (min (length a) (+ i 3)))
                 (subseq b (max 0 (- i 3)) (min (length b) (+ i 3)))
                 (subseq c (max 0 (- i 3)) (min (length c) (+ i 3))))))
-    (let ((orig (getf strings :lf))
-          (back (sb-external-format:decode-octets a :external-format (list format :eol-style newline))))
-      (assert (= (length orig) (length back)))
-      (dotimes (i (length orig))
-        (unless (eql (char orig i) (char back i))
-          (cerror "Continue" "~S: orig: ~C (~S), back: ~C (~S)"
-                  i
-                  (char orig i) (char-code (char orig i))
-                  (char back i) (char-code (char back i)))))
-      t)))
+    (unless dont-decode
+      (let ((orig (getf strings :lf))
+            (back
+              #+nil
+              (octets-to-string a :external-format format)
+              (sb-external-format:decode-octets a :external-format (list format :eol-style newline))))
+        (assert (= (length orig) (length back)))
+        (dotimes (i (length orig))
+          (unless (eql (char orig i) (char back i))
+            (cerror "Continue" "~S: orig: ~C (~S), back: ~C (~S)"
+                    i
+                    (char orig i) (char-code (char orig i))
+                    (char back i) (char-code (char back i)))))))
+    t))
