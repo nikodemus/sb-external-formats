@@ -70,6 +70,32 @@
                 s))
           *s-0-255*))
 
+(defparameter *s-0-10000*
+  (let* ((base (with-output-to-string (s)
+                 (loop repeat 1000
+                       do (loop repeat (random 100)
+                                for char = (loop for char = (code-char (random 10001))
+                                                 while (member char '(#\newline #\return))
+                                                 finally (return char))
+                                do (write-char char s))
+                          (terpri s))))
+         (cr (substitute #\return #\newline base))
+         (crlf (with-output-to-string (s)
+                 (loop for char across base
+                       when (eql #\newline char)
+                       do (write-char #\return s)
+                          (write-char #\newline s)
+                       else
+                       do (write-char char s)))))
+    (list :lf base :cr cr :crlf crlf)))
+
+(defparameter *utf-8-0-10000*
+  (mapcar (lambda (s)
+            (if (stringp s)
+                (string-to-octets s :external-format :utf-8)
+                s))
+          *s-0-10000*))
+
 (defun test-encode (method strings format &optional (newline :lf))
   (ecase method
     (:new
@@ -109,5 +135,11 @@
                 (subseq c (max 0 (- i 3)) (min (length c) (+ i 3))))))
     (let ((orig (getf strings :lf))
           (back (sb-external-format:decode-octets a :external-format (list format :eol-style newline))))
-      (assert (string= orig back)))
-    t))
+      (assert (= (length orig) (length back)))
+      (dotimes (i (length orig))
+        (unless (eql (char orig i) (char back i))
+          (cerror "Continue" "~S: orig: ~C (~S), back: ~C (~S)"
+                  i
+                  (char orig i) (char-code (char orig i))
+                  (char back i) (char-code (char back i)))))
+      t)))

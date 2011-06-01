@@ -49,10 +49,17 @@
              (values (invalid-utf-8-sequence-error))))
       (set-char-code j
           (macrolet ((with-byte ((var &optional startp) &body clauses)
-                       ;; FIXME: we don't check I isn't >= LENGTH until we
-                       ;; hit the top of the loop again! Under what circumstances
-                       ;; does this go wrong?
                        `(let ((,var ,(if startp
+                                         ;; For the first byte we know
+                                         ;; it's in range -- the rest
+                                         ;; we need to check. This
+                                         ;; makes decoding high ranges
+                                         ;; a bit slower, though.
+                                         ;;
+                                         ;; One option would be to
+                                         ;; decode without the check
+                                         ;; till LENGTH-4, and the
+                                         ;; rest with the check.
                                          `(sap-ref-8 src (+ src-offset i))
                                          `(if (> length i)
                                               (sap-ref-8 src (+ src-offset i))
@@ -89,7 +96,7 @@
                      ;; 3 bytes
                      (logior (ash (logand #x0f byte) 12)
                              (ash (logand #x3f byte2) 6)
-                             (logand #x37 byte3)))
+                             (logand #x3f byte3)))
                     (t
                      (with-byte (byte4)
                        ((and (= byte #xf0) (< byte2 #x90))
