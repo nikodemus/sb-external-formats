@@ -1,0 +1,47 @@
+SB-EXTERNAL-FORMAT
+* API
+*** TODO document ENCODE-STRING
+*** TODO add NULL-TERMINATE to ENCODE-STRING
+*** TODO add ENCODE-STRING-INTO
+*** TODO add DECODE-STRING and DECODE-STRING-INTO
+* Basics
+*** TODO fix decoding for the new eol-style design.
+*** TODO fix unibyte lengths for the new eol-style design.
+*** TODO figure out how to do BOM
+*** TODO hook into SBCL
+*** TODO replacement characters and other error handling options
+* Formats
+*** TODO ASCII
+***** TODO decoding
+*** TODO UTF-8
+***** TODO decoding
+***** TODO length
+*** TODO LATIN-1
+***** TODO decoding
+*** TODO LATIN-9
+*** TODO UTF-8B
+*** TODO EUC-JP
+*** TODO UTF-16
+***** collate on input?
+*** TODO UTF-32
+* Notes
+*** Entry Points
+    ENCODED-LENGTH, DECODED-LENGTH
+    ENCODE-STRING, DECODE-OCTETS
+    ENCODE-STRING-INTO, DECODE-OCTETS-INTO
+
+    Octet sources and sinks can be either vectors or saps.
+
+    Character sources and sinks are strings.
+*** Enconding Objects
+    Contain the methods for computing the length, encoding,
+    and decoding.
+
+    External Format Objects
+
+    Contains an encoding, a selection of line ending style,
+    and an error handling method.
+
+
+
+  

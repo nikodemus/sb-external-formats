@@ -126,6 +126,8 @@
                (assert (not (assoc (car style) styles)))
                (push style styles)))
     `(let ((,code (char-code ,char)))
+       ;; This is use being cleaver: for :LF style we don't need to
+       ;; check if we have a newline, but can use the regular encode.
        (if (eq :lf (eol-style))
            (locally ,@body)
            (if (eql ,code (char-code #\newline))
@@ -202,38 +204,6 @@
                       (index ,src-offset ,length ,eol-0)
                       (type (or index null) ,limit ,eol-1))
              ,@body))))
-
-;;; Utility macro for handling EOL encoding: EOL-CODE-0 and EOL-CODE-1 are the
-;;; variables which hold character code for the EOL sequence. the latter being
-;;; NIL if the EOL sequence is just a single character.
-;;;
-;;; This is intended to be placed around whatever looping encoding does, so
-;;; that we don't add conditionals to the loop.
-(defmacro with-eol-encoding ((eol-code-0 eol-code-1) &body body)
-  (with-unique-names (eol-0 eol-1)
-    `(let ((,eol-0 ,eol-code-0)
-           (,eol-1 ,eol-code-1))
-       (if ,eol-1
-           ;; Two character EOL
-           (macrolet ((do-codes ((var char-form) &body body)
-                        `(let ((,var (char-code ,char-form)))
-                           (flet ((frob (,var)
-                                    ,@body))
-                             (cond ((= ,var ,(char-code #\newline))
-                                    (frob ,',eol-0)
-                                    (frob ,',eol-1))
-                                   (t
-                                    (frob ,var)))))))
-             ,@body)
-           ;; Single character EOL
-           (macrolet ((do-codes ((var char-form) &body body)
-                        (with-unique-names (tmp)
-                          `(let* ((,tmp (char-code ,char-form))
-                                  (,var (if (= ,tmp ,(char-code #\newline))
-                                            ,',eol-0
-                                            ,tmp)))
-                            ,@body))))
-             ,@body)))))
 
 ;;; Similar tool for decoding.
 (defmacro with-eol-decoding ((eol-code-0 eol-code-1) &body body)
@@ -322,7 +292,7 @@
                 (when (= ,j ,limit-1)
                   (return (values ,i ,j)))
                 (setf (sap-ref-8 ,dst (+ ,dst-offset ,j)) 13)
-                (setf (sap-ref-8 ,dst (+ ,dst-offset ,j)) 10)
+                (setf (sap-ref-8 ,dst (+ ,dst-offset ,j 1)) 10)
                 (incf ,j 2))
                (setf (sap-ref-8 ,dst (+ ,dst-offset ,j))
                      (macrolet
@@ -387,19 +357,19 @@
            (values chars src-offset)))))
 
 (defmacro define-unibyte-decoder (encoding (byte) &body body)
-  (with-unique-names (src src-offset dst dst-offset length limit eol-0 eol-1 i j)
+  (with-unique-names (src src-offset dst dst-offset length limit i j)
     `(progn
-       (defdecoder ,encoding (,src ,src-offset ,dst ,dst-offset ,length ,limit ,eol-0 ,eol-1)
-         (with-eol-decoding (,eol-0 ,eol-1)
-           (do ((,i 0 (1+ i))
-                (,j 0))
-               ((>= ,i ,length))
-             (let* ((,byte (sap-ref-8 ,src (+ ,src-offset ,i)))
-                    (char-code
-                     (macrolet ((handle-error ()
-                                  `(unibyte-decoding-error ',,encoding ,',byte)))
-                       ,@body)))
-               (setf ,j (set-code char-code ,dst (+ ,dst-offset ,j)))))))
+       (defdecoder ,encoding (,src ,src-offset ,dst ,dst-offset ,length ,limit)
+         (do ((,i 0 (1+ i))
+              (,j 0))
+             ((or (= ,i ,length) (>= ,j ,limit))
+              (values ,i ,j))
+           (let* ((,byte (sap-ref-8 ,src (+ ,src-offset ,i)))
+                  (char-code
+                    (macrolet ((handle-error ()
+                                 `(unibyte-decoding-error ',,encoding ,',byte)))
+                      ,@body)))
+             (setf ,j (set-code char-code ,dst (+ ,dst-offset ,j))))))
        (let ((encoding (find-character-encoding ',encoding t)))
          (setf (character-encoding-decoded-length encoding)
                #'unibyte-decoded-length)))))
