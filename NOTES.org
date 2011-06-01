@@ -4,6 +4,9 @@ SB-EXTERNAL-FORMAT
 *** TODO add NULL-TERMINATE to ENCODE-STRING
 *** TODO add ENCODE-STRING-INTO
 *** TODO add DECODE-STRING and DECODE-STRING-INTO
+* Internals
+*** TODO DEFDECODER should not need DST, since SET-CHAR-CODE does the writing
+*** TODO DEFENCODER should not need SRC, since DO-ENCODE does the reading?
 * Basics
 *** TODO fix unibyte lengths for the new eol-style design.
 *** TODO figure out how to do BOM
@@ -19,7 +22,7 @@ SB-EXTERNAL-FORMAT
 *** TODO LATIN-9
 *** TODO UTF-8B
 *** TODO EUC-JP
-*** TODO UTF-16
+*** WIP UTF-16
 ***** collate on input?
 *** TODO UTF-32
 * Notes
