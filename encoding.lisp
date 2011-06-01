@@ -224,6 +224,17 @@
               `((setf (char ,dst (+ ,dst-offset ,index)) (code-char ,code)))))))))
 
 (defmacro defdecoder (encoding (src src-offset dst dst-offset length limit) &body body)
+  "Define a function to decode octets into strings. SRC receives the source, either
+a SAP or a (SIMPLE-ARRAY (UNSIGNED-BYTE 8). SRC-OFFSET is the offset from the start
+of the source in bytes. DST is the string to decode into, starting from DST-OFFSET.
+LENGTH is the number of bytes to decode, and LIMIT is the maximum number of characters
+to decode into.
+
+The defined function should return as multiple values the number of octets decoded,
+the number of characters they decoded into, and a tertiary value that is true iff
+any remaining bytes in the given input are too short to consitute a valid code sequence.
+
+Use macro SET-CHAR-CODE in the body to write to SRC."
   (with-unique-names (eol-mark eol)
     (let ((name (symbolicate encoding "-DECODER")))
       `(progn
