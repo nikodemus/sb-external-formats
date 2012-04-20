@@ -1,3 +1,21 @@
+;;;; By Nikodemus Siivola <nikodemus@random-state.net>, 2012.
+;;;;
+;;;; Permission is hereby granted, free of charge, to any person
+;;;; obtaining a copy of this software and associated documentation files
+;;;; (the "Software"), to deal in the Software without restriction,
+;;;; including without limitation the rights to use, copy, modify, merge,
+;;;; publish, distribute, sublicense, and/or sell copies of the Software,
+;;;; and to permit persons to whom the Software is furnished to do so,
+;;;; subject to the following conditions:
+;;;;
+;;;; THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+;;;; EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+;;;; MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+;;;; IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+;;;; CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+;;;; TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+;;;; SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
 (in-package :sb-external-format)
 
 (defun encoding-stub (slot)
@@ -28,7 +46,7 @@
   (encoded-length (encoding-stub 'encoded-length) :type function)
   (decoded-length (encoding-stub 'decoded-length) :type function)
   ;; These implement the guts of GUESS-ENCODED-LENGTH and GUESS-DECODED-LENGTH.
-  (guess-necoded-length (encoding-stub 'guess-encoded-length) :type function)
+  (guess-encoded-length (encoding-stub 'guess-encoded-length) :type function)
   (guess-decoded-length (encoding-stub 'guess-decoded-length) :type function)
   ;; Source location for the DEFINE-CHARACTER-ENCODING.
   (source-location nil))
@@ -258,7 +276,7 @@ Use macro SET-CHAR-CODE in the body to write to SRC."
                                                       (set-char-code-dst-offset ,',dst-offset))
                                       ,@',body)))
                         (let ((,eol-mark 1))
-                          (declare (sb!vm:word ,eol-mark))
+                          (declare (sb-ext:word ,eol-mark))
                           (ecase ,eol
                             (:lf (using-eol :lf))
                             (:crlf (using-eol :crlf))
@@ -326,63 +344,6 @@ Use macro SET-CHAR-CODE in the body to write to SRC."
                     (1+ index)))
              (declare (inline set-code))
              ,@body)))))
-
-(defmacro do-decode ((byte sap-form) &body body)
-  (let (styles)
-    (loop repeat 2
-          do (let ((style (pop body)))
-               (assert (member (car style) '(:cr :crlf)))
-               (assert (not (assoc (car style) styles)))
-               (push style styles)))
-    `(let ((,byte ,sap-form))
-       (ecase (eol-style)
-         (:lf (locally ,@body))
-         (:cr ,(let ((cr (second (assoc :cr styles))))
-                 `(if (= ,cr ,byte)
-                      (char-code #\newline)
-                      (locally ,@body))))
-         (:crlf ,(destructuring-bind (code0 code1) (cdr (assoc :crlf styles))
-                   (flet ((set-code (code string offset)
-                            (if (zerop (logior ,last (logxor ,code1 ,code)))
-                                ;; EOL sequence: rewrite previous as newline
-                                (setf code ,(char-code #\newline)
-                                      )
-                                ))))))
-         
-           (if (eql ,code (char-code #\newline))
-               (ecase (eol-style)
-                 (:cr ,@(cdr (assoc :cr styles)))
-                 (:crlf ,@(cdr (assoc :crlf styles))))
-               (locally ,@body)))
-       ;; This is use being cleaver: for :LF style we don't need to
-       ;; check if we have a newline, but can use the regular encode.
-       (if (eq :lf (eol-style))
-           (locally ,@body)
-           (if (eql ,code (char-code #\newline))
-               (ecase (eol-style)
-                 (:cr ,@(cdr (assoc :cr styles)))
-                 (:crlf ,@(cdr (assoc :crlf styles))))
-               (locally ,@body))))))
-
-(defmacro do-code ((code char) &body body)
-  (let (styles)
-    (loop repeat 2
-          do (let ((style (pop body)))
-               (assert (member (car style) '(:cr :crlf)))
-               (assert (not (assoc (car style) styles)))
-               (push style styles)))
-    `(let ((,code (char-code ,char)))
-       ;; This is use being cleaver: for :LF style we don't need to
-       ;; check if we have a newline, but can use the regular encode.
-       (if (eq :lf (eol-style))
-           (locally ,@body)
-           (if (eql ,code (char-code #\newline))
-               (ecase (eol-style)
-                 (:cr ,@(cdr (assoc :cr styles)))
-                 (:crlf ,@(cdr (assoc :crlf styles))))
-               (locally ,@body))))))
-
-
 
 (defun unibyte-encoded-length (src src-offset length limit eol-0 eol-1)
   (cond ((not eol-1)

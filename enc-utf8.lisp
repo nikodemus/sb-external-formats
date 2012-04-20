@@ -1,11 +1,26 @@
+;;;; By Nikodemus Siivola <nikodemus@random-state.net>, 2012.
+;;;;
+;;;; Permission is hereby granted, free of charge, to any person
+;;;; obtaining a copy of this software and associated documentation files
+;;;; (the "Software"), to deal in the Software without restriction,
+;;;; including without limitation the rights to use, copy, modify, merge,
+;;;; publish, distribute, sublicense, and/or sell copies of the Software,
+;;;; and to permit persons to whom the Software is furnished to do so,
+;;;; subject to the following conditions:
+;;;;
+;;;; THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+;;;; EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+;;;; MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+;;;; IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+;;;; CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+;;;; TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+;;;; SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
 (in-package :sb-external-format)
 
 (define-character-encoding :utf-8
   (:nicknames :utf8)
-  (:documentation "Variable length encoding.")
-  (:eol-info '((:lf 10)
-               (:cr 13)
-               (:crlf 13 10))))
+  (:documentation "Variable length encoding."))
 
 (defencoder :utf-8 (src src-offset dst dst-offset length limit)
   (macrolet ((set-byte (offset value)
@@ -135,3 +150,51 @@
                              (t
                               ;; character out of range
                               (invalid-utf-8-sequence))))))))))))))))))
+
+(define-character-encoding :utf-8b)
+
+(defencoder :utf-8b (src src-offset dst dst-offset length limit)
+  (macrolet ((set-byte (offset value)
+               `(setf (sap-ref-8 dst (+ k ,offset)) ,value)))
+    (let ((limit-4 (- limit 4))
+          (length length))
+      (declare (index limit-4 length))
+      (do ((i 0 (1+ i))
+           (j 0))
+          ((or (= i length) (>= j limit-4))
+           (values i j))
+        (declare (index i j) (optimize (safety 0) (speed 3)))
+        (let ((k (+ dst-offset j)))
+          (do-encode (code (char src (+ src-offset i)))
+            (:cr
+             (set-byte 0 13)
+             (incf j 1))
+            (:crlf
+             (set-byte 0 13)
+             (set-byte 1 10)
+             (incf j 2))
+            (cond ((< code #x80)
+                   (set-byte 0 code)
+                   (incf j))
+                  ((< code #x800)
+                   (set-byte 0 (logior #xc0 (ash code -6)))
+                   (set-byte 1 (logior #x80 (logand code #x3f)))
+                   (incf j 2))
+                  ((<= #xdc80 code #xdcff) ; invalid
+                   (set-byte 0 (logand code #xff))
+                   (incf j))
+                  ((< code #x10000)
+                   (set-byte 0 (logior #xe0 (ash code -12)))
+                   (set-byte 1 (logior #x80 (logand #x3f (ash code -6))))
+                   (set-byte 2 (logior #x80 (logand code #x3f)))
+                   (incf j 3))
+                  ;; 4 octets
+                  (t
+                   (set-byte 0 (logior #xf0 (logand #x07 (ash code -18))))
+                   (set-byte 1 (logior #x80 (logand #x3f (ash code -12))))
+                   (set-byte 2 (logior #x80 (logand #x3f (ash code -6))))
+                   (set-byte 3 (logand #x3f code))
+                   (incf j 4)))))))))
+
+(defdecoder :utf-8b (src src-offset dst dst-offset length limit)
+  )

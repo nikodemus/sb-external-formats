@@ -1,0 +1,123 @@
+SB-EXTERNAL-FORMAT
+
+This is noodling towards a new external format implementation in SBCL.
+Currently it lives right here, outside the SBCL source tree.
+
+I'm not working on this right now, so if someone wants to run with it,
+they should feel free. Patches that move things along are welcome.
+
+* API
+*** full API?
+***** ENCODE-STRING
+***** ENCODE-STRING-INTO
+***** ENCODE-BOM
+***** ENCODE-BOM-INTO
+***** DECODE-OCTETS
+***** DECODE-OCTETS-INTO
+***** DECODE-BOM
+***** DECODED-LENGTH
+***** ENCODED-LENGTH
+***** READ-BOM
+***** WRITE-BOM
+***** STREAM-EXTERNAL-FORMAT
+***** (SETf STREAM-EXTERNAL-FORMAT)
+***** *DEFAULT-EXTERNAL-FORMAT*
+***** SYNONYM-EXTERNAL-FORMAT
+***** *FILESYSTEM-EXTERNAL-FORMAT*
+      Or maybe *SYSTEM-EXTERNAL-FORMAT*? Or maybe there needs to be
+      *FILESYSTEM-EXTERNAL-FORMATS* which is a alist against which you
+      match pathnames?
+***** *C-STRING-EXTERNAL-FORMAT*
+***** Additional &KEY :EXTERNAL-FORMAT arguments:
+      Just an idea: Maybe some more functions could benefit from an
+      external format argument? This is not strictly conformant, so
+      maybe they should be -star variants or something?
+******* PEEK-CHAR
+******* READ-CHAR
+******* READ-LINE
+******* READ-SEQUENCE
+******* WRITE-CHAR
+******* WRITE-STRING
+******* WRITE-LINE
+*** TODO document ENCODE-STRING
+*** TODO add NULL-TERMINATE to ENCODE-STRING
+*** TODO add ENCODE-STRING-INTO
+*** TODO add DECODE-STRING and DECODE-STRING-INTO
+* Internals
+*** TODO DEFDECODER should not need DST, since SET-CHAR-CODE does the writing
+*** TODO DEFENCODER should not need SRC, since DO-ENCODE does the reading?
+* Basics
+*** TODO fix unibyte lengths for the new eol-style design.
+*** WIP figure out how to do BOM
+***** WIP api
+      Consider (open "foo" :external-format :utf-16) which should
+      check BOM immediately, but not later.
+
+      Consider decoding parts of a binary file.
+
+      So, perhaps:
+
+      function WRITE-BOM stream
+
+      function READ-BOM stream &optional errorp
+
+      function DECODE-BOM octets &key start end
+
+      function ENCODE-BOM &key external-format
+
+      DECODE-OCTETS can use BOM to select an actual encoding
+      based on BOM, but that's a convenience.
+***** WIP decoding
+      This makes me think that #<EXTERNAL-FORMAT> is not a user
+      object.
+
+      Consider (open "foo" :external-format :utf-16) which should
+      check BOM immediately, but not later.
+
+      Consider decoding something in chunks.
+
+      Later reads should not however check the BOM again.
+
+      UTF-8 needs an :IGNORE-BOM option. Ie. drop the BOM from the
+      input, if it's there.
+
+      Probably need an :ALLOW-BOM option. Default to true.
+***** TODO encoding
+      Perhaps a function (BOM <stream>) is the best option?
+      Keeps the existence of the BOM under the user's control.
+*** TODO hook into SBCL
+*** TODO replacement characters and other error handling options
+*** TODO DOCUMENTATION EXTERNAL-FORMAT
+* Performance
+*** TODO LATIN-1 slow compared to current.
+* Formats
+*** TODO UTF-8
+***** TODO length
+*** TODO LATIN-1
+*** TODO LATIN-9
+*** TODO UTF-8B
+*** TODO EUC-JP
+*** WIP UTF-16
+***** collate on input?
+*** TODO UTF-32
+* Notes
+*** Entry Points
+    ENCODED-LENGTH, DECODED-LENGTH
+    ENCODE-STRING, DECODE-OCTETS
+    ENCODE-STRING-INTO, DECODE-OCTETS-INTO
+
+    Octet sources and sinks can be either vectors or saps.
+
+    Character sources and sinks are strings.
+*** Enconding Objects
+    Contain the methods for computing the length, encoding,
+    and decoding.
+
+    External Format Objects
+
+    Contains an encoding, a selection of line ending style,
+    and an error handling method.
+
+
+
+  

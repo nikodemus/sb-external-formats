@@ -1,17 +1,35 @@
+;;;; By Nikodemus Siivola <nikodemus@random-state.net>, 2012.
+;;;;
+;;;; Permission is hereby granted, free of charge, to any person
+;;;; obtaining a copy of this software and associated documentation files
+;;;; (the "Software"), to deal in the Software without restriction,
+;;;; including without limitation the rights to use, copy, modify, merge,
+;;;; publish, distribute, sublicense, and/or sell copies of the Software,
+;;;; and to permit persons to whom the Software is furnished to do so,
+;;;; subject to the following conditions:
+;;;;
+;;;; THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+;;;; EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+;;;; MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+;;;; IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+;;;; CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+;;;; TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+;;;; SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
 (in-package :sb-external-format)
 
 (define-character-encoding :ascii
   (:nicknames :us-ascii :ansi_x3.4-1968 :iso-646 :iso-646-us :|646|)
   (:documentation
-   "A 7-bit encoding. Characters in code range 0-127 map to octets
-matching their character codes. Characters outside that range cannot
-be encoded."))
+   "A 7-bit encoding. Characters in code range 0-127 map to octets encoding
+their character codes. Characters outside that range cannot be encoded."))
 
 (define-unibyte-encoder :ascii (char-code)
   (if (> char-code 127)
       (handle-error)
       char-code))
 
+;;; FIXME -- decoding and decoded length doesn't work yet
 (define-unibyte-decoder :ascii (octet)
   (if (> octet 127)
       (handle-error)
