@@ -1,20 +1,20 @@
-SB-EXTERNAL-FORMAT
+SB-EXTERNAL-FORMATS
 
 This is noodling towards a new external format implementation in SBCL.
 Currently it lives right here, outside the SBCL source tree. I'm not
 working on this right now, so if someone wants to run with it, they
 should feel free. Patches that move things along are welcome.
 
-* TODO
+* Tasks
   - UTF-16 error handling
-  - UTF-16 surrogate policy
+  - UTF-16 surrogate policy:
     Allow writing valid surrogate pairs. Signal an error only for
     invalid pairs -- but allow writing them with a restart. (Since we
     allow surrogates as lisp-characters, it would seem silly to
     complain about writing a valid pair of them. This means reading them
     back will canonicalize the representation, but that seems sane.)
   - UTF-8 surrogate policy
-  - Missing encodings
+  - Missing encodings:
     - CP1250 CP1251 CP1252 CP1253 CP1254 CP1255 CP1256 CP1257 CP1258 CP437
       CP850 CP852 CP855 CP857 CP860 CP861 CP862 CP863 CP864 CP865 CP866 CP869 CP874
     - EBCDIC-US
@@ -47,7 +47,7 @@ should feel free. Patches that move things along are welcome.
   - Implement DECODE-OCTETS-INTO
   - DECODE-OCTETS to work on null-terminated buffers of unknown size
   - Proper test suite: not sure if eg. DECODED- and ENCODED-LENGTH current work
-  - Sort out BOM API
+  - Sort out BOM API:
     - Consider (OPEN ... :EXTERNAL-FORMAT :UTF-16) which should
       check BOM immediately, but not later, but later reads should not.
     - Consider decoding parts of a binary file -- BOM might need to be
@@ -61,8 +61,24 @@ should feel free. Patches that move things along are welcome.
   Character sources and sinks are strings. The API level is
   responsible for pulling out the storage vector.
 
-  Enconding objects contain the methods for computing the length,
+  Encoding objects contain the methods for computing the length,
   encoding, and decoding. Also length estimation?
 
-  External Format Objects contains an encoding, a selection of line
+  External-format Objects contains an encoding, a selection of line
   ending style, and a replacement character.
+
+  Error functions may return either the character code of the
+  replacement character, or NIL to indicate that it is to be skipped.
+
+* Open Questions
+  How to do more complex error handling? Ie. decoding invalid UTF-8
+  sequences into strings describing those sequences.
+
+  Seems like the handler would need to know the position where the
+  failure occurred. With that and CONTINUE the final result can be
+  amended as needed. Something along the lines of my original
+  multi-char replacements might be more efficient, but this seems like
+  a tangential issue.
+
+  Would also like to be able to ABORT at the position of the invalid
+  char/octets.
