@@ -139,21 +139,7 @@
                                  (ash (logxor #x80 byte3) 6)
                                  (logxor #x80 byte4))))
                     (t
-                     (with-byte (byte5 (byte byte2 byte3 byte4))
-                       ((and (= byte #xf8) (< byte2 #x88))
-                        ;; overlong
-                        (utf-8-error byte byte2 byte3 byte4 byte5))
-                       ((< byte #xfc)
-                        ;; character out of range
-                        (utf-8-error byte byte2 byte3 byte4 byte5))
-                       (t
-                        (with-byte (byte6 (byte byte2 byte3 byte4 byte5))
-                          ((and (= byte #xfc) (< byte2 #x84))
-                           ;; overlong
-                           (utf-8-error byte byte2 byte3 byte4 byte5 byte6))
-                          (t
-                           ;; character out of range
-                           (utf-8-error byte byte2 byte3 byte4 byte5 byte6))))))))))))))))
+                     (utf-8-error byte byte2 byte3 byte4))))))))))))
    skip))
 
 (define-character-encoding :utf-8b)
