@@ -243,7 +243,7 @@
                       (sb-external-format:encode-string string :external-format :ascii))
                     :external-format :ascii))))
 
-(assert (string= "1Ae2Oe3Ao4ae5oe6ao"
+(assert (string= "1A2O3A4a5o6a"
                  (let ((string "1Ä2Ö3Å4ä5ö6å"))
                    (sb-external-format:decode-octets
                     (handler-bind
@@ -251,14 +251,52 @@
                                   (let ((replacement
                                           (case
                                               (sb-external-format::encoding-error-character c)
-                                            (#\Ä "Ae")
-                                            (#\Ö "Oe")
-                                            (#\Å "Ao")
-                                            (#\ä "ae")
-                                            (#\ö "oe")
-                                            (#\å "ao"))))
+                                            ((#\Ä #\Å)
+                                             #\A)
+                                            (#\Ö
+                                             #\O)
+                                            ((#\ä #\å)
+                                             #\a)
+                                            (#\ö
+                                             #\o))))
                                     (if replacement
                                         (use-value replacement c)
                                         (continue c))))))
                       (sb-external-format:encode-string string :external-format :ascii))
+                    :external-format :ascii))))
+
+(assert (string= "Look, a ? and a ?!"
+                 (sb-external-format:decode-octets
+                  (let ((string (format nil "Look, a ~A and a ~A!"
+                                        #\GREEK_CAPITAL_LETTER_LAMDA
+                                        #\GREEK_SMALL_LETTER_LAMDA)))
+                    (assert (= 18 (length string)))
+                    (sb-external-format:encode-string
+                     string
+                     :external-format '(:ascii :replacement #\?)))
+                  :external-format :ascii)))
+
+(assert (string= "Look, an x and an x!"
+                 (sb-external-format:decode-octets
+                  (let ((string (format nil "Look, an Ä and an Ö!")))
+                    (assert (= 20 (length string)))
+                    (sb-external-format:encode-string string
+                                                      :external-format :latin-1))
+                  :external-format '(:ascii :replacement #\x))))
+
+(assert (string= "Föä"
+                 (handler-bind
+                     ((error (lambda (c)
+                               (use-value
+                                (code-char (car (sb-external-format::decoding-error-octets c)))
+                                c))))
+                   (sb-external-format:decode-octets
+                    (sb-external-format:encode-string "Föä" :external-format :latin-1)
+                    :external-format :ascii))))
+
+(assert (string= "F!"
+                 (handler-bind
+                     ((error #'continue))
+                   (sb-external-format:decode-octets
+                    (sb-external-format:encode-string "Föä!" :external-format :latin-1)
                     :external-format :ascii))))

@@ -380,7 +380,7 @@ Use macro SET-CHAR-CODE in the body to write to SRC."
             :end)
            (values octets (+ src-offset i))))))
 
-(define-condition encoding-error (error)
+(define-condition ecoding-error (error)
   ((character :initarg :character :reader encoding-error-character)
    (encoding :initarg :encoding :reader encoding-error-encoding))
   (:report (lambda (condition stream)
@@ -390,31 +390,39 @@ Use macro SET-CHAR-CODE in the body to write to SRC."
                        (char-code character)
                        (encoding-error-encoding condition))))))
 
-(declaim (ftype (function (t char-code) (values list &optional))
+(define-condition decoding-error (error)
+  ((octets :initarg :octets :reader decoding-error-octets)
+   (encoding :initarg :encoding :reader decoding-error-encoding))
+  (:report (lambda (condition stream)
+             (format stream "Octet sequence ~S cannot be decoded as ~A."
+                     (decoding-error-octets condition)
+                     (decoding-error-encoding condition)))))
+
+(declaim (ftype (function (t char-code) (values (or null char-code) &optional))
                 unibyte-encoding-error))
 (defun unibyte-encoding-error (encoding char-code)
   (restart-case
       (error 'encoding-error
              :character (code-char char-code)
              :encoding encoding)
-    (use-value (string)
-      :report "Provide a string-designator to encode instead of the character."
-      (coerce (string string) 'list))
+    (use-value (character)
+      :report "Provide an alternative character encode instead."
+      (check-type character character)
+      (char-code character))
     (continue ()
       :report "Continue encoding, dropping this character."
       nil)))
 
 (defmacro define-unibyte-encoder (encoding (char-code) &body body)
   (with-unique-names (src src-offset dst dst-offset length limit i j
-                      limit-1 replacements action done)
+                      limit-1 replacement done)
     `(progn
        (defencoder ,encoding
            (,src ,src-offset ,dst ,dst-offset ,length ,limit)
-         (let ((,limit-1 (- ,limit 1))
-               (,replacements nil))
+         (let ((,limit-1 (- ,limit 1)))
            (do ((,i 0 (1+ ,i))
                 (,j 0))
-               ((or (= ,i ,length) (>= ,j ,limit))
+               ((or (= ,i ,length)  (>= ,j ,limit))
                 (values ,i ,j))
              (declare (index ,i ,j) (optimize (safety 0) (speed 3)))
              (do-encode (,char-code (char ,src (+ ,src-offset ,i)))
@@ -431,26 +439,37 @@ Use macro SET-CHAR-CODE in the body to write to SRC."
                   (setf (sap-ref-8 ,dst (+ ,dst-offset ,j))
                         (macrolet
                             ((handle-error ()
-                               `(let ((,',action
+                               `(let ((,',replacement
                                         (unibyte-encoding-error ',,encoding ,',char-code)))
-                                  (cond (,',action
-                                         (setf ,',replacements
-                                               (append ,',action ,',replacements))
-                                         (go ,',done))
+                                  (cond (,',replacement
+                                         (setf ,',char-code ,',replacement)
+                                         (go encode))
                                         (t
                                          (go ,',done))))))
                           ,@body))
                   (incf ,j)
-                ,done)
-               (when ,replacements
-                 (setf ,char-code (char-code (pop ,replacements)))
-                 (go encode))))))
+                  ,done)))))
        (let ((encoding (find-character-encoding ',encoding t)))
          (setf (character-encoding-encoded-length encoding)
                #'unibyte-encoded-length)))))
 
+(declaim (ftype (function (t (unsigned-byte 8)) (values (or null char-code) &optional))
+                unibyte-decoding-error))
+(defun unibyte-decoding-error (encoding byte)
+  (restart-case
+      (error 'decoding-error
+             :octets (list byte)
+             :encoding encoding)
+    (use-value (character)
+      :report "Provide a character to decode as."
+      (check-type character character)
+      (char-code character))
+    (continue ()
+      :report "Skip this octet sequence."
+      nil)))
+
 (defmacro define-unibyte-decoder (encoding (byte) &body body)
-  (with-unique-names (src src-offset dst dst-offset length limit i j)
+  (with-unique-names (src src-offset dst dst-offset length limit i j replacement skip)
     `(progn
        (defdecoder ,encoding (,src ,src-offset ,dst ,dst-offset ,length ,limit)
          (do ((,i 0 (1+ ,i))
@@ -460,9 +479,16 @@ Use macro SET-CHAR-CODE in the body to write to SRC."
            (declare (index ,i ,j) (optimize (safety 0) (speed 3)))
            (set-char-code ,j
                           (macrolet ((handle-error ()
-                                       `(unibyte-decoding-error ',,encoding ,',byte)))
+                                       `(let ((,',replacement
+                                                (unibyte-decoding-error ',,encoding ,',byte)))
+                                          (cond (,',replacement
+                                                 ,',replacement)
+                                                (t
+                                                 (decf ,',j)
+                                                 (go ,',skip))))))
                             (let ((,byte (sap-ref-8 ,src (+ ,src-offset ,i))))
-                              ,@body)))))
+                              ,@body)))
+           ,skip))
        (let ((encoding (find-character-encoding ',encoding t)))
          (setf (character-encoding-decoded-length encoding)
                #'unibyte-decoded-length)))))

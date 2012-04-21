@@ -29,7 +29,6 @@ their character codes. Characters outside that range cannot be encoded."))
       (handle-error)
       char-code))
 
-;;; FIXME -- decoding and decoded length doesn't work yet
 (define-unibyte-decoder :ascii (octet)
   (if (> octet 127)
       (handle-error)

@@ -24,9 +24,13 @@
 (declaim (eol-style *default-eol-style*))
 (defvar *default-eol-style* #+win32 :crlr #-win32 :lf)
 
+(declaim (type (or null character) *default-replacement-character*))
+(defvar *default-replacement-character* nil)
+
 (defstruct external-format
   (character-encoding (missing-arg) :type character-encoding)
   (eol-style *default-eol-style* :type eol-style)
+  (replacement *default-replacement-character* :type (or null character))
   (name))
 
 (defconstant +bom-mark+ (code-char #xfeff))
@@ -60,24 +64,36 @@
 
 (defun find-external-format (external-format &optional (errorp t))
   (etypecase external-format
-    (external-format external-format)
     (symbol
      (awhen (find-character-encoding external-format errorp)
        (make-external-format :character-encoding it)))
     (cons
-     (destructuring-bind (name &key (eol-style *default-eol-style*)) external-format
+     (destructuring-bind (name &key (eol-style *default-eol-style*)
+                                    (replacement *default-replacement-character*))
+         external-format
        (make-external-format
         :character-encoding (find-character-encoding name errorp)
-        :eol-style eol-style)))))
+        :eol-style eol-style
+        :replacement replacement)))
+    (external-format external-format)))
+
+(defun parse-external-format (external-format)
+  (etypecase external-format
+    (symbol
+     (values external-format *default-eol-style* *default-replacement-character*))
+    (cons
+     (destructuring-bind (name &key (eol-style *default-eol-style*)
+                                    (replacement *default-replacement-character*))
+         external-format
+       (values name eol-style replacement)))
+    (external-format
+     (values (external-format-name external-format)
+             (external-format-eol-style external-format)
+             (external-format-replacement external-format)))))
 
 (defun select-external-format (external-format octets start count)
-  (let ((name (etypecase external-format
-                (external-format
-                 (external-format-name external-format))
-                (symbol
-                 external-format)
-                (cons
-                 (car external-format)))))
+  (multiple-value-bind (name eol-style replacement)
+      (parse-external-format external-format)
     (multiple-value-bind (real-name skip)
         (case name
           (:utf-16
@@ -97,14 +113,14 @@
               (make-external-format
                :character-encoding (find-character-encoding real-name)
                :name name
-               :eol-style (external-format-eol-style external-format))))
+               :eol-style eol-style
+               :replacement replacement)))
          ((or cons symbol)
           (make-external-format
            :name name
            :character-encoding (find-character-encoding real-name)
-           :eol-style (if (consp external-format)
-                          (getf (cdr external-format) :eol-style)
-                          *default-eol-style*))))
+           :eol-style eol-style
+           :replacement replacement)))
        skip))))
 
 
