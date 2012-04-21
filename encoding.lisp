@@ -316,40 +316,6 @@ Use macro SET-CHAR-CODE in the body to write to DST."
                       (type (or index null) ,limit ,eol-1))
              ,@body))))
 
-;;; Similar tool for decoding.
-(defmacro with-eol-decoding ((eol-code-0 eol-code-1) &body body)
-  (with-unique-names (eol-0 eol-1 last)
-    `(let ((,eol-0 ,eol-code-0)
-           (,eol-1 ,eol-code-1))
-       (if ,eol-1
-           ;; Two character EOL
-           (let ((,last 1))
-             (flet ((set-code (code string offset)
-                      ;; Using bit-operations allows us to do the comparison
-                      ;; of both last character and current one with a single
-                      ;; branch.
-                      (if (zerop (logior ,last (logxor ,eol-1 code)))
-                          ;; EOL sequence: rewrite previous character as
-                          ;; newline instead.
-                          (setf code ,(char-code #\newline)
-                                index (1- index)
-                                ,last 1)
-                          ;; Not EOL
-                          (setf ,last (logxor ,eol-0 code)))
-                      (setf (char string index) (code-char code))
-                      ;; Return the next index
-                      (values (1+ index))))
-               (declare (inline set-code))
-               ,@body))
-           ;; Single character EOL
-           (flet ((set-code (code string index)
-                    (when (= code ,eol-0)
-                      (setf code ,(char-code #\newline)))
-                    (setf (char string index) (code-char code))
-                    (1+ index)))
-             (declare (inline set-code))
-             ,@body)))))
-
 (defun unibyte-encoded-length (src src-offset length limit eol-0 eol-1)
   (cond ((not eol-1)
          ;; Single byte EOL
