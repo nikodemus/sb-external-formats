@@ -116,17 +116,17 @@
               (t
                (with-byte (byte3 (byte byte2))
                  ((and (= byte #xe0) (< byte2 #xa0))
-                     ;; overlong
+                  ;; overlong
                   (utf-8-error byte byte2 byte3))
                  ((< byte #xf0)
-                     ;; 3 bytes
+                  ;; 3 bytes
                   (logior (ash (logand #x0f byte) 12)
                           (ash (logand #x3f byte2) 6)
                           (logand #x3f byte3)))
                  (t
                   (with-byte (byte4 (byte byte2 byte3))
                     ((and (= byte #xf0) (< byte2 #x90))
-                        ;; overlong
+                     ;; overlong
                      (utf-8-error byte byte2 byte3 byte4))
                     ((< byte #xf4)
                      (if (or (> byte #xf4) (and (= byte #xf4) (> byte2 #x8f)))
@@ -141,18 +141,18 @@
                     (t
                      (with-byte (byte5 (byte byte2 byte3 byte4))
                        ((and (= byte #xf8) (< byte2 #x88))
-                           ;; overlong
+                        ;; overlong
                         (utf-8-error byte byte2 byte3 byte4 byte5))
                        ((< byte #xfc)
-                           ;; character out of range
+                        ;; character out of range
                         (utf-8-error byte byte2 byte3 byte4 byte5))
                        (t
                         (with-byte (byte6 (byte byte2 byte3 byte4 byte5))
                           ((and (= byte #xfc) (< byte2 #x84))
-                              ;; overlong
+                           ;; overlong
                            (utf-8-error byte byte2 byte3 byte4 byte5 byte6))
                           (t
-                              ;; character out of range
+                           ;; character out of range
                            (utf-8-error byte byte2 byte3 byte4 byte5 byte6))))))))))))))))
    skip))
 

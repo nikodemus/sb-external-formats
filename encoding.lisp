@@ -254,12 +254,10 @@ The defined function should return as multiple values the number of octets decod
 the number of characters they decoded into, and a tertiary value that is true iff
 any remaining bytes in the given input are too short to consitute a valid code sequence.
 
-Use macro SET-CHAR-CODE in the body to write to SRC."
-  (with-unique-names (eol-mark eol)
+Use macro SET-CHAR-CODE in the body to write to DST."
+  (with-unique-names (eol-mark eol typed-dst)
     (let ((name (symbolicate encoding "-DECODER")))
       `(progn
-         ;; FIXME: Split into base-string and character string versions for speed.
-         ;; the caller is responsible for making sure we don't have a non-simple thing.
          (defun ,name (,src ,src-offset ,dst ,dst-offset ,length ,limit ,eol)
            (declare (string ,dst)
                     (index ,src-offset ,dst-offset ,length ,limit)
@@ -268,15 +266,17 @@ Use macro SET-CHAR-CODE in the body to write to SRC."
                       (declare (system-area-pointer ,src))
                       (etypecase ,dst
                         ((simple-array character (*))
-                         (decode-to-string ,src ,dst))
+                         (locally (declare (type (simple-array character (*)) ,dst))
+                           (decode-to-string ,src ,dst)))
                         ((simple-array base-char (*))
-                         (decode-to-string ,src ,dst))))
-                    (decode-to-string (,src ,dst)
+                         (locally (declare (type (simple-array base-char (*)) ,dst))
+                           (decode-to-string ,src ,dst)))))
+                    (decode-to-string (,src ,typed-dst)
                       (declare (muffle-conditions code-deletion-note))
                       (macrolet ((using-eol (eol-style)
                                    `(symbol-macrolet ((set-char-code-eol-style ,eol-style)
                                                       (set-char-code-eol-mark ,',eol-mark)
-                                                      (set-char-code-dst ,',dst)
+                                                      (set-char-code-dst ,',typed-dst)
                                                       (set-char-code-dst-offset ,',dst-offset))
                                       ,@',body)))
                         (let ((,eol-mark 1))
