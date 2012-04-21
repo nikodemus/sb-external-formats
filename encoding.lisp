@@ -259,8 +259,9 @@ Use macro SET-CHAR-CODE in the body to write to DST."
     (let ((name (symbolicate encoding "-DECODER")))
       `(progn
          (defun ,name (,src ,src-offset ,dst ,dst-offset ,length ,limit ,eol)
-           (declare (string ,dst)
+           (declare (type (and simple-string (not (simple-array nil (*)))) ,dst)
                     (index ,src-offset ,dst-offset ,length ,limit)
+                    (eol-style ,eol)
                     (optimize speed))
            (labels ((decode-from-sap (,src)
                       (declare (system-area-pointer ,src))

@@ -61,6 +61,16 @@
                    (set-byte 3 (logior #x80 (logand #x3f code)))
                    (incf j 4)))))))))
 
+(defun utf-8-decoding-error (byte byte2 byte3 byte4)
+  (cond (byte4
+         (decoding-error :utf-8 (list byte byte2 byte3 byte4)))
+        (byte3
+         (decoding-error :utf-8 (list byte byte2 byte3)))
+        (byte2
+         (decoding-error :utf-8 (list byte byte2)))
+        (t
+         (decoding-error :utf-8 (list byte)))))
+
 (defdecoder :utf-8 (src src-offset dst dst-offset length limit)
   (do ((i 0)
        (j 0 (1+ j)))
@@ -69,8 +79,8 @@
     (declare (index i j) (optimize (safety 0) (speed 3)))
     (set-char-code
      j
-     (flet ((utf-8-error (&rest octets)
-              (or (decoding-error :utf-8 octets)
+     (flet ((utf-8-error (byte &optional byte2 byte3 byte4)
+              (or (utf-8-decoding-error byte byte2 byte3 byte4)
                   (progn
                     (decf j)
                     (go skip)))))
