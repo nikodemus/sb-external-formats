@@ -300,3 +300,14 @@
                    (sb-external-format:decode-octets
                     (sb-external-format:encode-string "Föä!" :external-format :latin-1)
                     :external-format :ascii))))
+
+(assert (string= "fbar"
+                 (handler-bind ((error #'continue))
+                   (sb-external-format:decode-octets
+                    (sb-external-format:encode-string "fööbar" :external-format :latin-1)
+                    :external-format :utf-8))))
+
+(assert (string= "fXbar"
+                 (sb-external-format:decode-octets
+                  (sb-external-format:encode-string "fööbar" :external-format :latin-1)
+                  :external-format '(:utf-8 :replacement #\X))))

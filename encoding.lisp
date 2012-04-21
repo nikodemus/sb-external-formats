@@ -258,6 +258,8 @@ Use macro SET-CHAR-CODE in the body to write to SRC."
   (with-unique-names (eol-mark eol)
     (let ((name (symbolicate encoding "-DECODER")))
       `(progn
+         ;; FIXME: Split into base-string and character string versions for speed.
+         ;; the caller is responsible for making sure we don't have a non-simple thing.
          (defun ,name (,src ,src-offset ,dst ,dst-offset ,length ,limit ,eol)
            (declare (string ,dst)
                     (index ,src-offset ,dst-offset ,length ,limit)
@@ -440,7 +442,7 @@ Use macro SET-CHAR-CODE in the body to write to SRC."
                         (macrolet
                             ((handle-error ()
                                `(let ((,',replacement
-                                        (unibyte-encoding-error ',,encoding ,',char-code)))
+                                        (encoding-error ',,encoding ,',char-code)))
                                   (cond (,',replacement
                                          (setf ,',char-code ,',replacement)
                                          (go encode))
@@ -453,12 +455,12 @@ Use macro SET-CHAR-CODE in the body to write to SRC."
          (setf (character-encoding-encoded-length encoding)
                #'unibyte-encoded-length)))))
 
-(declaim (ftype (function (t (unsigned-byte 8)) (values (or null char-code) &optional))
-                unibyte-decoding-error))
-(defun unibyte-decoding-error (encoding byte)
+(declaim (ftype (function (t list) (values (or null char-code) &optional))
+                decoding-error))
+(defun decoding-error (encoding octets)
   (restart-case
       (error 'decoding-error
-             :octets (list byte)
+             :octets octets
              :encoding encoding)
     (use-value (character)
       :report "Provide a character to decode as."
@@ -480,7 +482,7 @@ Use macro SET-CHAR-CODE in the body to write to SRC."
            (set-char-code ,j
                           (macrolet ((handle-error ()
                                        `(let ((,',replacement
-                                                (unibyte-decoding-error ',,encoding ,',byte)))
+                                                (decoding-error ',,encoding (list ,',byte))))
                                           (cond (,',replacement
                                                  ,',replacement)
                                                 (t
