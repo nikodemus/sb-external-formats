@@ -157,15 +157,17 @@
                (assert (not (assoc (car style) styles)))
                (push style styles)))
     `(let ((,code (char-code ,char)))
-       ;; This is use being cleaver: for :LF style we don't need to
-       ;; check if we have a newline, but can use the regular encode.
-       (if (eq :lf (eol-style))
-           (locally ,@body)
-           (if (eql ,code (char-code #\newline))
-               (ecase (eol-style)
-                 (:cr ,@(cdr (assoc :cr styles)))
-                 (:crlf ,@(cdr (assoc :crlf styles))))
-               (locally ,@body))))))
+       ;; This is us being cleaver: for :LF style we don't need to check if we
+       ;; have a newline, but can use the regular encode.
+       (tagbody
+        encode
+          (if (eq :lf (eol-style))
+              (locally ,@body)
+              (if (eql ,code (char-code #\newline))
+                  (ecase (eol-style)
+                    (:cr ,@(cdr (assoc :cr styles)))
+                    (:crlf ,@(cdr (assoc :crlf styles))))
+                  (locally ,@body)))))))
 
 (defmacro eol-style ()
   (error "bad"))
@@ -378,13 +380,38 @@ Use macro SET-CHAR-CODE in the body to write to SRC."
             :end)
            (values octets (+ src-offset i))))))
 
+(define-condition encoding-error (error)
+  ((character :initarg :character :reader encoding-error-character)
+   (encoding :initarg :encoding :reader encoding-error-encoding))
+  (:report (lambda (condition stream)
+             (let ((character (encoding-error-character condition)))
+               (format stream "Character ~S (~S) cannot be encoded as ~A."
+                       character
+                       (char-code character)
+                       (encoding-error-encoding condition))))))
+
+(declaim (ftype (function (t char-code) (values list &optional))
+                unibyte-encoding-error))
+(defun unibyte-encoding-error (encoding char-code)
+  (restart-case
+      (error 'encoding-error
+             :character (code-char char-code)
+             :encoding encoding)
+    (use-value (string)
+      :report "Provide a string-designator to encode instead of the character."
+      (coerce (string string) 'list))
+    (continue ()
+      :report "Continue encoding, dropping this character."
+      nil)))
+
 (defmacro define-unibyte-encoder (encoding (char-code) &body body)
   (with-unique-names (src src-offset dst dst-offset length limit i j
-                      limit-1)
+                      limit-1 replacements action done)
     `(progn
        (defencoder ,encoding
            (,src ,src-offset ,dst ,dst-offset ,length ,limit)
-         (let ((,limit-1 (- ,limit 1)))
+         (let ((,limit-1 (- ,limit 1))
+               (,replacements nil))
            (do ((,i 0 (1+ ,i))
                 (,j 0))
                ((or (= ,i ,length) (>= ,j ,limit))
@@ -400,12 +427,24 @@ Use macro SET-CHAR-CODE in the body to write to SRC."
                 (setf (sap-ref-8 ,dst (+ ,dst-offset ,j)) 13)
                 (setf (sap-ref-8 ,dst (+ ,dst-offset ,j 1)) 10)
                 (incf ,j 2))
-               (setf (sap-ref-8 ,dst (+ ,dst-offset ,j))
-                     (macrolet
-                         ((handle-error ()
-                            `(unibyte-encoding-error ',,encoding ,',char-code)))
-                       ,@body))
-               (incf ,j)))))
+               (tagbody
+                  (setf (sap-ref-8 ,dst (+ ,dst-offset ,j))
+                        (macrolet
+                            ((handle-error ()
+                               `(let ((,',action
+                                        (unibyte-encoding-error ',,encoding ,',char-code)))
+                                  (cond (,',action
+                                         (setf ,',replacements
+                                               (append ,',action ,',replacements))
+                                         (go ,',done))
+                                        (t
+                                         (go ,',done))))))
+                          ,@body))
+                  (incf ,j)
+                ,done)
+               (when ,replacements
+                 (setf ,char-code (char-code (pop ,replacements)))
+                 (go encode))))))
        (let ((encoding (find-character-encoding ',encoding t)))
          (setf (character-encoding-encoded-length encoding)
                #'unibyte-encoded-length)))))

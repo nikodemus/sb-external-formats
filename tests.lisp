@@ -235,3 +235,30 @@
 (bench *s-0-10000* :utf-8)
 (bench *s-0-10000* :utf-16le)
 (bench *s-0-10000* :utf-16be)
+
+(assert (string= "123456"
+                 (let ((string "1Ä2Ö3Å4ä5ö6å"))
+                   (sb-external-format:decode-octets
+                    (handler-bind ((error #'continue))
+                      (sb-external-format:encode-string string :external-format :ascii))
+                    :external-format :ascii))))
+
+(assert (string= "1Ae2Oe3Ao4ae5oe6ao"
+                 (let ((string "1Ä2Ö3Å4ä5ö6å"))
+                   (sb-external-format:decode-octets
+                    (handler-bind
+                        ((error (lambda (c)
+                                  (let ((replacement
+                                          (case
+                                              (sb-external-format::encoding-error-character c)
+                                            (#\Ä "Ae")
+                                            (#\Ö "Oe")
+                                            (#\Å "Ao")
+                                            (#\ä "ae")
+                                            (#\ö "oe")
+                                            (#\å "ao"))))
+                                    (if replacement
+                                        (use-value replacement c)
+                                        (continue c))))))
+                      (sb-external-format:encode-string string :external-format :ascii))
+                    :external-format :ascii))))
