@@ -49,7 +49,11 @@
   (guess-encoded-length (encoding-stub 'guess-encoded-length) :type function)
   (guess-decoded-length (encoding-stub 'guess-decoded-length) :type function)
   ;; Source location for the DEFINE-CHARACTER-ENCODING.
-  (source-location nil))
+  (source-location nil)
+  ;; Character repertoire
+  (repertoire nil :type list)
+  ;; True if this encoding can be used to round-trip arbitrary octets
+  (binary nil :type boolean))
 
 (defun %encode (encoding string string-offset buf buf-offset count x eol)
   (funcall (character-encoding-encoder encoding)
@@ -139,10 +143,12 @@
                 nil))))))
 
 (defmacro define-character-encoding (name &body options)
-  (let ((nicknames (pop-assoc :nicknames options)))
+  (let ((nicknames (pop-assoc :nicknames options))
+        (repertoire (pop-assoc :repertoire options)))
     `(let ((old (find-character-encoding ',name nil))
            (new (make-character-encoding
-                 ,@(mapcan #'identity options)
+                 ,@(apply #'append options)
+                 :repertoire ',repertoire
                  :source-location (sb-c:source-location))))
        (when old
          (style-warn "Redefining character encoding ~S." ',name)
@@ -168,6 +174,9 @@
                     (:cr ,@(cdr (assoc :cr styles)))
                     (:crlf ,@(cdr (assoc :crlf styles))))
                   (locally ,@body)))))))
+
+(deftype eol-style ()
+  `(member :cr :lf :crlf))
 
 (defmacro eol-style ()
   (error "bad"))
@@ -368,8 +377,8 @@ Use macro SET-CHAR-CODE in the body to write to DST."
                      (decoding-error-encoding condition)))))
 
 (declaim (ftype (function (t char-code) (values (or null char-code) &optional))
-                unibyte-encoding-error))
-(defun unibyte-encoding-error (encoding char-code)
+                encoding-error))
+(defun encoding-error (encoding char-code)
   (restart-case
       (error 'encoding-error
              :character (code-char char-code)
@@ -461,6 +470,112 @@ Use macro SET-CHAR-CODE in the body to write to DST."
        (let ((encoding (find-character-encoding ',encoding t)))
          (setf (character-encoding-decoded-length encoding)
                #'unibyte-decoded-length)))))
+
+;;; Converting bytes to character codes is easy: just use a 256-element
+;;; lookup table that maps each possible byte to its corresponding
+;;; character code.
+;;;
+;;; Converting character codes to bytes is a little harder, since the
+;;; codes may be spare (e.g. we use codes 0-127, 3490, and 4598).  The
+;;; previous version of this macro utilized a gigantic CASE expression
+;;; to do the hard work, with the result that the code was huge (since
+;;; SBCL's then-current compilation strategy for CASE expressions was
+;;; (and still is) converting CASE into COND into if-the-elses--which is
+;;; also inefficient unless your code happens to occur very early in the
+;;; chain.
+;;;
+;;; The current strategy is to build a table:
+;;;
+;;; [ ... code_1 byte_1 code_2 byte_2 ... code_n byte_n ... ]
+;;;
+;;; such that the codes are sorted in order from lowest to highest.  We
+;;; can then binary search the table to discover the appropriate byte
+;;; for a character code.  We also implement an optimization: all unibyte
+;;; mappings do not remap ASCII (0-127) and some do not remap part of
+;;; the range beyond character code 127.  So we check to see if the
+;;; character code falls into that range first (a quick check, since
+;;; character codes are guaranteed to be positive) and then do the binary
+;;; search if not.  This optimization also enables us to cut down on the
+;;; size of our lookup table.
+(defmacro define-unibyte-mapping (encoding &body exceptions)
+  (let* ((holes nil)
+         ;; Build a list of (CHAR-CODE OCTET) pairs
+         (pairs (loop for octet below 256
+                      for char-code = (let ((pair (assoc octet exceptions)))
+                                        (cond (pair
+                                               (unless (second pair)
+                                                 (setf holes t))
+                                               (second pair))
+                                              (t
+                                               octet)))
+                      when char-code
+                      collect (list char-code octet)))
+         ;; Find the smallest character code such that the corresponding
+         ;; byte is != to the code.
+         (lowest-non-equivalent-code
+           (caar (sort (copy-seq exceptions) #'< :key #'first)))
+         ;; Sort them for our lookup table.
+         (sorted-pairs (sort (subseq pairs lowest-non-equivalent-code)
+                             #'< :key #'car))
+         ;; Create the lookup table.
+         (sorted-lookup-table
+           (reduce #'append sorted-pairs :from-end t :initial-value nil))
+         (encoder-table (symbolicate "**" encoding "-ENCODER-TABLE**"))
+         (decoder-table (symbolicate "**" encoding "-DECODER-TABLE**"))
+         (repertoire nil))
+    (let ((low (caar pairs))
+          (hi (caar pairs))
+          (chars nil))
+      (dolist (pair (cdr pairs))
+        (cond ((eql hi (1- (car pair)))
+               (setf hi (car pair)))
+              (t
+               (if (< low hi)
+                   (push (cons low hi) repertoire)
+                   (push (code-char low) chars))
+               (setf low (car pair)
+                     hi (car pair)))))
+      (setf repertoire (reverse (append (reverse chars) repertoire))))
+    `(progn
+       (declaim (type (simple-array fixnum (*)) ,decoder-table))
+       (defglobal ,decoder-table
+           ,(make-array 256 :element-type 'fixnum
+                            :initial-contents
+                            (loop for octet below 256
+                                  collect
+                                     (let ((pair (assoc octet exceptions)))
+                                       (cond (pair
+                                              (or (second pair) -1))
+                                             (t
+                                              octet))))))
+       (define-unibyte-decoder ,encoding (octet)
+         ,(if holes
+              `(let ((code (aref ,decoder-table octet)))
+                 (if (minusp code)
+                     (handle-error)
+                     code))
+              `(aref ,decoder-table octet)))
+       (declaim (type (simple-array char-code (*)) ,encoder-table))
+       (defglobal ,encoder-table
+           ,(make-array (length sorted-lookup-table)
+                         :element-type 'char-code
+                         :initial-contents sorted-lookup-table))
+       (define-unibyte-encoder ,encoding (char-code)
+         (if (< char-code ,lowest-non-equivalent-code)
+             char-code
+             ;; FIXME: Check performance
+             (loop with low = 0
+                   with high = ,(- (length sorted-lookup-table) 2)
+                   while (< low high)
+                   do (let ((mid (logandc2 (truncate (+ low high 2) 2) 1)))
+                        (if (< char-code (aref ,encoder-table mid))
+                            (setf high (- mid 2))
+                            (setf low mid)))
+                   finally (return (if (eql char-code (aref ,encoder-table low))
+                                       (aref ,encoder-table (1+ low))
+                                       (handle-error))))))
+       (let ((encoding (find-character-encoding ,encoding)))
+         (setf (character-encoding-repertoire encoding) ',repertoire)))))
 
 (defun unibyte-decoded-length (src src-offset length limit code0 code1)
   (declare (system-area-pointer src)

@@ -18,9 +18,6 @@
 
 (in-package :sb-external-format)
 
-(deftype eol-style ()
-  `(member :cr :lf :crlf))
-
 (declaim (eol-style *default-eol-style*))
 (defvar *default-eol-style* #+win32 :crlr #-win32 :lf)
 

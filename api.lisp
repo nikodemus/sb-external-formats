@@ -180,3 +180,32 @@ type \(VECTOR \(UNSIGNED-BYTE 8))."
                                   (setf newline-interval (truncate newline-interval 4)))
                                 (push buffer buffers)
                                 (decf count consumed))))))))))))
+
+(defun external-format-repertoire (external-format)
+  "Returns a list describing the character repertoire of an
+external format.
+
+The lists starts with conses of inclusive character code bounds, describing
+contiguous parts of the repertoire. These are followed solitary characters
+outside those ranges.
+
+Eg. a hypothetical external format capatable of encoding characters
+in code ranges 65-90, and 97-122, and all odd numerals would return:
+
+  ((65 . 90) (97 . 122) #\1 #\3 #\5 #\7 #\9)
+
+Eg. ASCII repertoire is:
+
+  ((0 . 127))
+"
+  (character-encoding-repertoire
+   (external-format-character-encoding
+    (find-external-format external-format))))
+
+(defun binary-external-format-p (external-format)
+  "Returns true if EXTERNAL-FORMAT can be used to round-trip arbitrary
+binary data."
+  (let ((format (find-external-format external-format)))
+    (and (eq :lf (external-format-eol-style format))
+         (character-encoding-binary
+          (external-format-character-encoding format)))))

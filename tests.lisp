@@ -311,3 +311,65 @@
                  (sb-external-format:decode-octets
                   (sb-external-format:encode-string "fööbar" :external-format :latin-1)
                   :external-format '(:utf-8 :replacement #\X))))
+
+;;;; "Proper" tests
+
+(defun make-test-string (name)
+  (let ((repertoire (sb-external-format:external-format-repertoire name))
+        (p 0))
+    (flet ((write-one (char stream)
+             (unless (eql #\return char) ; KLUDGE
+               (write-char char stream)
+               (when (zerop (setf p (mod (+ p 1) 40)))
+                 (terpri stream)))))
+      (with-output-to-string (s)
+        (dolist (part repertoire)
+          (if (consp part)
+              (destructuring-bind (low . high) part
+                (loop for c from low upto high
+                      do (write-one (code-char c) s)))
+              (write-one part s)))))))
+
+(defvar *binary-vector* (let ((buffer (make-array 256 :element-type '(unsigned-byte 8))))
+                          (dotimes (i (length buffer))
+                            (setf (aref buffer i) i))
+                          buffer))
+
+(defun round-trip-test (name)
+  (let ((string (make-test-string name))
+        (lf-format (list name :eol-style :lf)))
+    (flet ((test-eol (style)
+             (let* ((encoded (sb-external-format:encode-string
+                              string :external-format (list name :eol-style style)))
+                    (decoded (sb-external-format:decode-octets
+                              encoded :external-format (list name :eol-style style))))
+               (assert (equal string decoded)))))
+      (test-eol :lf)
+      (test-eol :cr)
+      (test-eol :crlf))
+    (if (sb-external-format::binary-external-format-p lf-format)
+        (let* ((decoded (sb-external-format:decode-octets
+                         *binary-vector* :external-format lf-format))
+               (encoded (sb-external-format:encode-string
+                         decoded :external-format lf-format)))
+          (assert (equalp *binary-vector* encoded))
+          (values name t))
+        (values name nil))))
+
+(let ((uniq (make-hash-table))
+      (ok nil)
+      (bin nil))
+  (maphash (lambda (name enc)
+             (declare (ignore name))
+             (unless (gethash enc uniq)
+               (setf (gethash enc uniq) t)))
+           sb-external-format::*character-encodings*)
+  (maphash (lambda (enc bool)
+             (declare (ignore bool))
+             (multiple-value-bind (name binary)
+                 (round-trip-test (sb-external-format::character-encoding-name enc))
+               (push name ok)
+               (when binary
+                 (push name bin))))
+           uniq)
+  (values ok bin))
