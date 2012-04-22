@@ -31,6 +31,7 @@ should feel free. Patches that move things along are welcome.
     - UCS-2
     - UCS-4
     - UTF-32
+    - UTF-8b
     - X-MAC-CYRILLIC
 
   - Document ENCODE-STRING
@@ -46,6 +47,11 @@ should feel free. Patches that move things along are welcome.
       checked multiple times.
     - How to best support writing a BOM? Maybe just WRITE-BOM?
 
+  - Documentation strings for encodings should say what languages / areas they
+    are appropriate for.
+  - Full-name (mostly just the canonical name, but latin encodings should mention
+    both the latin name and the iso-name)
+  - Naming convention: case-insensitive strings?
 
 * Design
   Octet sources and sinks can be either vectors or saps.

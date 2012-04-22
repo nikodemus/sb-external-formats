@@ -209,3 +209,12 @@ binary data."
     (and (eq :lf (external-format-eol-style format))
          (character-encoding-binary
           (external-format-character-encoding format)))))
+
+(defmethod documentation (external-format (type (eql 'external-format)))
+  (documentation (find-external-format external-format) t))
+
+(defmethod documentation ((external-format external-format) (type t))
+  (character-encoding-documentation
+   (external-format-character-encoding external-format)))
+
+
