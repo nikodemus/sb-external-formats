@@ -15,18 +15,16 @@ should feel free. Patches that move things along are welcome.
     back will canonicalize the representation, but that seems sane.)
   - UTF-8 surrogate policy
   - Missing encodings:
+    - CP 932, CP 936, CP 949, CP 950
     - EBCDIC-US
     - EUC-JP
     - GBK
-    - KOI8-R
-    - KOI8-U
     - SHIFT_JIS
     - UCS-2
     - UCS-4
     - UTF-32
     - UTF-8b
     - X-MAC-CYRILLIC
-
   - Document ENCODE-STRING
   - Add :NULL-TERMINATE to ENCODE-STRING
   - Implement ENCODE-STRING-INTO
