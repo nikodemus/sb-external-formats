@@ -90,7 +90,7 @@ Ypogegrammeni symbols."))
 
 (define-character-encoding :iso-8859-8
   (:nicknames :iso8859-8 :latin/hebrew)
-  (:documntation "Hebrew encoding."))
+  (:documentation "Hebrew encoding."))
 
 (define-unibyte-mapping-from-file :iso-8859-8 "unicode/8859-8.TXT")
 

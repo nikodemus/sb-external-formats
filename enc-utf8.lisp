@@ -152,8 +152,10 @@
                      (utf-8-error byte byte2 byte3 byte4))))))))))))
    skip))
 
+#+nil
 (define-character-encoding :utf-8b)
 
+#+nil
 (defencoder :utf-8b (src src-offset dst dst-offset length limit)
   (macrolet ((set-byte (offset value)
                `(setf (sap-ref-8 dst (+ k ,offset)) ,value)))
@@ -197,5 +199,6 @@
                    (set-byte 3 (logand #x3f code))
                    (incf j 4)))))))))
 
+#+nil
 (defdecoder :utf-8b (src src-offset dst dst-offset length limit)
   )
