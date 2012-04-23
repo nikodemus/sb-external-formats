@@ -541,6 +541,7 @@ Use macro SET-CHAR-CODE in the body to write to DST."
                       (parse line)
                     (error (e)
                       (error "Error parsing line ~S:~%  ~A" line e))))))
+      (assert (<= last 255))
       (loop for hole from (1+ last) below 256
             do (push (list hole nil) exceptions)
                (setf holes t))
