@@ -18,136 +18,113 @@
 
 (in-package :sb-external-format)
 
-;;;; Perhaps controversially, for most LATIN formats we canonicalize on the
-;;;; more memorable name, LATIN N, and not the official ISO name, which are
-;;;; harder for humans to recognize at a glance.
-
 ;;;; ISO 8859-1 (LATIN 1)
 
-(define-character-encoding :iso-8859-1
-  (:nicknames :iso-8859-1 :iso8859-1
-              :latin-1 :latin1
-              :iso-ir-100 :csisolatin1 :l1 :ibm819 :cp819)
-  (:documentation
-   "Western European encoding. Maps character codes 0-255 directly to
-corresponding octets."))
-
-(define-unibyte-mapping-from-file :iso-8859-1 "unicode/8859-1.TXT")
+(define-unibyte-character-encoding :iso-8859-1
+    (:iso8859-1 :latin-1 :latin1 :l1 :iso-ir-100 :csisolatin1 :ibm819 :cp819)
+  "Western European encoding. Maps character codes 0-255 directly to
+corresponding octets."
+  "unicode/8859-1.TXT")
 
 ;;;; ISO 8859-2 (LATIN 2)
 
-(define-character-encoding :iso-8859-2
-  (:nicknames :iso8859-2 :latin-2 :latin2)
-  (:documentation
-   "Eastern European encoding. NOTE: Very different from :CP852 (MS-DOS Latin
+(define-unibyte-character-encoding :iso-8859-2
+    (:iso8859-2 :latin-2 :latin2 :l2 :iso-ir-101 :csisolatin2 :ibm912 :cp912)
+  "Eastern European encoding. NOTE: Very different from :CP852 (MS-DOS Latin
 2, PC Latin 2), which is also referred to as `Latin 2' in Czech and Slovak
-regions."))
-
-(define-unibyte-mapping-from-file :iso-8859-2 "unicode/8859-2.TXT")
+regions."
+  "unicode/8859-2.TXT")
 
 ;;;; ISO 8859-3 (LATIN 3)
 
-(define-character-encoding :iso-8859-3
-  (:nicknames :iso8859-3 :latin-3 :latin3)
-  (:documentation "South European encoding."))
-
-(define-unibyte-mapping-from-file :iso-8859-3 "unicode/8859-3.TXT")
+(define-unibyte-character-encoding :iso-8859-3
+    (:iso8859-3 :latin-3 :latin3 :l3 :iso-ir-109 :csisolatin3)
+  "South European encoding."
+  "unicode/8859-3.TXT")
 
 ;;;; ISO 8859-4 (LATIN 4)
 
-(define-character-encoding :iso-8859-4
-  (:nicknames :iso8859-4 :latin-4 :latin4)
-  (:documentation "North European encoding."))
-
-(define-unibyte-mapping-from-file :iso-8859-4 "unicode/8859-4.TXT")
+(define-unibyte-character-encoding :iso-8859-4
+    (:iso8859-4 :latin-4 :latin4 :l4 :csisolatin4)
+  "North European encoding."
+  "unicode/8859-4.TXT")
 
 ;;;; ISO 8859-5 (LATIN/Cyrillic)
 
-(define-character-encoding :iso-8859-5
-  (:nicknames :iso8859-5 :latin/cyrillic))
-
-(define-unibyte-mapping-from-file :iso-8859-5 "unicode/8859-5.TXT")
+(define-unibyte-character-encoding :iso-8859-5
+    (:iso8859-5 :latin/cyrillic)
+  "Cyrillic encoding."
+  "unicode/8859-5.TXT")
 
 ;;;; ISO 8859-6
 
-(define-character-encoding :iso-8859-6
-  (:nicknames :iso8859-6 :latin/arabic)
-  (:documentation "Arabic alphabet encoding."))
-
-(define-unibyte-mapping-from-file :iso-8859-6 "unicode/8859-6.TXT")
+(define-unibyte-character-encoding :iso-8859-6
+    (:iso8859-6 :latin/arabic)
+  "Arabic encoding."
+  "unicode/8859-6.TXT")
 
 ;;;; ISO 8859-7 (LATIN/GREEK)
 
-(define-character-encoding :iso-8859-7
-  (:nicknames :iso8859-7 :latin/greek)
-  (:documentation
-   "Modern Greek encoding. 2003 version with Euro, Drachma, and Greek
-Ypogegrammeni symbols."))
-
-(define-unibyte-mapping-from-file :iso-8859-7 "unicode/8859-7.TXT")
+(define-unibyte-character-encoding :iso-8859-7
+    (:iso8859-7 :latin/greek)
+  "Modern Greek encoding. 2003 version with Euro, Drachma, and Greek
+Ypogegrammeni symbols."
+  "unicode/8859-7.TXT")
 
 ;;;; ISO 8859-8 (LATIN/HEBREW)
 
-(define-character-encoding :iso-8859-8
-  (:nicknames :iso8859-8 :latin/hebrew)
-  (:documentation "Hebrew encoding."))
-
-(define-unibyte-mapping-from-file :iso-8859-8 "unicode/8859-8.TXT")
+(define-unibyte-character-encoding :iso-8859-8
+    (:iso8859-8 :latin/hebrew)
+  "Hebrew encoding."
+  "unicode/8859-8.TXT")
 
 ;;;; ISO 8859-9 (LATIN 5)
 
-(define-character-encoding :iso-8859-9
-  (:nicknames :iso8859-9 :latin-5 :latin5)
-  (:documentation "Turkish encoding."))
-
-(define-unibyte-mapping-from-file :iso-8859-9 "unicode/8859-9.TXT")
+(define-unibyte-character-encoding :iso-8859-9
+    (:iso8859-9 :latin-5 :latin5)
+  "Turkish encoding."
+  "unicode/8859-9.TXT")
 
 ;;;; ISO 8859-10 (LATIN 6)
 
-(define-character-encoding :iso-8859-10
-  (:nicknames :iso8859-10 :latin-6 :latin6)
-  (:documentation "Nordic language encoding."))
-
-(define-unibyte-mapping-from-file :iso-8859-10 "unicode/8859-10.TXT")
+(define-unibyte-character-encoding :iso-8859-10
+    (:iso8859-10 :latin-6 :latin6)
+  "Nordic language encoding."
+  "unicode/8859-10.TXT")
 
 ;;;; ISO 8859-11 (LATIN/THAI)
 
-(define-character-encoding :iso-8859-11
-  (:nicknames :iso8859-11 :latin/thai)
-  (:documentation "Thai encoding."))
-
-(define-unibyte-mapping-from-file :iso-8859-11 "unicode/8859-11.TXT")
+(define-unibyte-character-encoding :iso-8859-11
+    (:iso8859-11 :latin/thai)
+  "Thai encoding."
+  "unicode/8859-11.TXT")
 
 ;;;; ISO 8859-12 was never defined.
 
 ;;;; ISO 8859-13 (LATIN 7)
 
-(define-character-encoding :iso-8859-13
-  (:nicknames :iso8859-13 :latin-7 :latin7)
-  (:documentation "Baltic language encoding."))
-
-(define-unibyte-mapping-from-file :iso-8859-13 "unicode/8859-13.TXT")
+(define-unibyte-character-encoding :iso-8859-13
+  (:iso8859-13 :latin-7 :latin7)
+  "Baltic language encoding."
+  "unicode/8859-13.TXT")
 
 ;;;; ISO 8859-14 (LATIN 8)
 
-(define-character-encoding :iso-8859-14
-  (:nicknames :iso8859-14 :latin-8 :latin8)
-  (:documentation "Celtic language encoding."))
-
-(define-unibyte-mapping-from-file :iso-8859-14 "unicode/8859-14.TXT")
+(define-unibyte-character-encoding :iso-8859-14
+    (:iso8859-14 :latin-8 :latin8)
+  "Celtic language encoding."
+  "unicode/8859-14.TXT")
 
 ;;;; ISO 8859-15 (LATIN 9)
 
-(define-character-encoding :iso-8859-15
-  (:nicknames :iso8859-15 :latin-9 :latin9)
-  (:documentation "Western European encoding with Euro-symbol."))
-
-(define-unibyte-mapping-from-file :iso-8859-15 "unicode/8859-15.TXT")
+(define-unibyte-character-encoding :iso-8859-15
+    (:iso8859-15 :latin-9 :latin9)
+  "Western European encoding with Euro-symbol."
+  "unicode/8859-15.TXT")
 
 ;;;; ISO 8859-16 (LATIN 10)
 
-(define-character-encoding :iso-8859-16
-  (:nicknames :iso8859-16 :latin-10 :latin10)
-  (:documentation "South-East European Encoding."))
-
-(define-unibyte-mapping-from-file :iso-8859-16 "unicode/8859-16.TXT")
+(define-unibyte-character-encoding :iso-8859-16
+  (:iso8859-16 :latin-10 :latin10)
+  "South-East European Encoding."
+  "unicode/8859-16.TXT")

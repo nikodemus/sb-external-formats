@@ -497,117 +497,39 @@ Use macro SET-CHAR-CODE in the body to write to DST."
 ;;; character codes are guaranteed to be positive) and then do the binary
 ;;; search if not.  This optimization also enables us to cut down on the
 ;;; size of our lookup table.
-(defmacro define-unibyte-mapping (encoding &body exceptions)
-  (let* ((holes nil)
-         ;; Build a list of (CHAR-CODE OCTET) pairs
-         (pairs (loop for octet below 256
-                      for char-code = (let ((pair (assoc octet exceptions)))
-                                        (cond (pair
-                                               (unless (second pair)
-                                                 (setf holes t))
-                                               (second pair))
-                                              (t
-                                               octet)))
-                      when char-code
-                      collect (list char-code octet)))
-         ;; Find the smallest character code such that the corresponding
-         ;; byte is != to the code.
-         (lowest-non-equivalent-code
-           (caar (sort (copy-seq exceptions) #'< :key #'first)))
-         ;; Sort them for our lookup table.
-         (sorted-pairs (sort (if lowest-non-equivalent-code
-                                 (subseq pairs lowest-non-equivalent-code)
-                                 (copy-seq pairs))
-                             #'< :key #'car))
-         ;; Create the lookup table.
-         (sorted-lookup-table
-           (reduce #'append sorted-pairs :from-end t :initial-value nil))
-         (encoder-table (symbolicate "**" encoding "-ENCODER-TABLE**"))
-         (decoder-table (symbolicate "**" encoding "-DECODER-TABLE**"))
-         (repertoire nil))
-    (let ((low (caar pairs))
-          (hi (caar pairs))
-          (chars nil))
-      (dolist (pair (cdr pairs))
-        (cond ((eql hi (1- (car pair)))
-               (setf hi (car pair)))
-              (t
-               (if (< low hi)
-                   (push (cons low hi) repertoire)
-                   (push (code-char low) chars))
-               (setf low (car pair)
-                     hi (car pair)))))
-      (if (< low hi)
-          (push (cons low hi) repertoire)
-          (push (code-char low) chars))
-      (setf repertoire (reverse (append chars repertoire))))
-    `(progn
-       ,@(when exceptions
-           `((declaim (type (simple-array fixnum (*)) ,decoder-table))
-             (defglobal ,decoder-table
-                 ,(make-array 256 :element-type 'fixnum
-                                  :initial-contents
-                                  (loop for octet below 256
-                                        collect
-                                           (let ((pair (assoc octet exceptions)))
-                                             (cond (pair
-                                                    (or (second pair) -1))
-                                                   (t
-                                                    octet))))))
-             (declaim (type (simple-array char-code (*)) ,encoder-table))
-             (defglobal ,encoder-table
-                 ,(make-array (length sorted-lookup-table)
-                              :element-type 'char-code
-                              :initial-contents sorted-lookup-table))))
-       (define-unibyte-decoder ,encoding (octet)
-         ,(cond (holes
-                 `(let ((code (aref ,decoder-table octet)))
-                    (if (minusp code)
-                        (handle-error)
-                        code)))
-                (exceptions
-                 `(aref ,decoder-table octet))
-                (t
-                 'octet)))
-       (define-unibyte-encoder ,encoding (char-code)
-         ,(if exceptions
-              `(if (< char-code ,lowest-non-equivalent-code)
-                   char-code
-                   ;; FIXME: Check performance
-                   (loop with low = 0
-                         with high = ,(- (length sorted-lookup-table) 2)
-                         while (< low high)
-                         do (let ((mid (logandc2 (truncate (+ low high 2) 2) 1)))
-                              (if (< char-code (aref ,encoder-table mid))
-                                  (setf high (- mid 2))
-                                  (setf low mid)))
-                         finally (return (if (eql char-code (aref ,encoder-table low))
-                                             (aref ,encoder-table (1+ low))
-                                             (handle-error)))))
-              'char-code))
-       (let ((encoding (find-character-encoding ,encoding)))
-         (setf (character-encoding-repertoire encoding) ',repertoire
-               (character-encoding-binary encoding) ,(not holes))))))
-
-(defmacro define-unibyte-mapping-from-file (name pathname)
-  (let ((exceptions nil)
+(defmacro define-unibyte-character-encoding (name nicknames docstring pathname)
+  (let (;; List of (char-code octet) pairs when they differ.
+        (exceptions nil)
+        ;; Complete list of defined (char-code octet) pairs.
+        (pairs nil)
+        ;; T if there are holes in the encoding -- ie. if it cannot round-trip
+        ;; arbitrary octets.
+        (holes nil)
         (last -1))
     (flet ((skip (line)
              (or (zerop (length line))
                  (eql #\# (char line 0))))
            (parse (line)
-             (let* ((p (position #\tab line))
+             (let* ((p (or (position #\tab line)
+                           (return-from parse nil)))
                     (s1 (subseq line 0 p))
-                    (s2 (subseq line (1+ p) (position #\tab line :start (1+ p)))))
-               (setf (char s1 0) #\#
-                     (char s2 0) #\#)
+                    (s2 (string-trim
+                         " " (subseq line (1+ p) (position #\tab line :start (1+ p))))))
+               (setf (char s1 0) #\#)
+               (if (plusp (length s2))
+                   (setf (char s2 0) #\#)
+                   (setf s2 nil))
                (let ((n1 (read-from-string s1))
-                     (n2 (read-from-string s2)))
+                     (n2 (when s2 (read-from-string s2))))
                  (loop for hole from (1+ last) below n1
-                       do (push (list hole nil) exceptions))
+                       do (push (list hole nil) exceptions)
+                          (setf holes t))
                  (setf last n1)
                  (unless (eql n1 n2)
-                   (push (list n1 n2) exceptions))))))
+                   (push (list n1 n2) exceptions))
+                 (if n2
+                     (push (list n2 n1) pairs)
+                     (setf holes t))))))
       (with-open-file (f (merge-pathnames pathname
                                          (asdf:component-pathname
                                           (asdf:find-system :sb-external-formats)))
@@ -615,10 +537,99 @@ Use macro SET-CHAR-CODE in the body to write to DST."
        (loop for line = (read-line f nil nil)
              while line
              do (unless (skip line)
-                  (parse line))))
+                  (handler-case
+                      (parse line)
+                    (error (e)
+                      (error "Error parsing line ~S:~%  ~A" line e))))))
       (loop for hole from (1+ last) below 256
-            do (push (list hole nil) exceptions)))
-    `(define-unibyte-mapping ,name ,@(reverse exceptions))))
+            do (push (list hole nil) exceptions)
+               (setf holes t))
+      (setf pairs (nreverse pairs)
+            exceptions (nreverse exceptions))
+      ;;
+      ;; Done parsing the file
+      ;;
+      (let* (;; Find the smallest character code such that the corresponding
+             ;; byte is != to the code.
+             (lowest-non-equivalent-code
+               (caar (sort (copy-seq exceptions) #'< :key #'first)))
+             ;; Sort them for our lookup table.
+             (sorted-pairs (sort (if lowest-non-equivalent-code
+                                     (subseq pairs lowest-non-equivalent-code)
+                                     (copy-seq pairs))
+                                 #'< :key #'car))
+             ;; Create the lookup table.
+             (sorted-lookup-table
+               (reduce #'append sorted-pairs :from-end t :initial-value nil))
+             (encoder-table (symbolicate "**" name "-ENCODER-TABLE**"))
+             (decoder-table (symbolicate "**" name "-DECODER-TABLE**"))
+             (repertoire nil))
+        ;; Figure out the repertoire.
+        (let ((low (caar pairs))
+              (hi (caar pairs))
+              (chars nil))
+          (dolist (pair (cdr pairs))
+            (cond ((eql hi (1- (car pair)))
+                   (setf hi (car pair)))
+                  (t
+                   (if (< low hi)
+                       (push (cons low hi) repertoire)
+                       (push (code-char low) chars))
+                   (setf low (car pair)
+                         hi (car pair)))))
+          (if (< low hi)
+              (push (cons low hi) repertoire)
+              (push (code-char low) chars))
+          (setf repertoire (reverse (append chars repertoire))))
+        `(progn
+           (define-character-encoding ,name
+             (:nicknames ,@nicknames)
+             (:documentation ,docstring)
+             (:repertoire ,@repertoire)
+             (:binary ,(not holes)))
+           ,@(when exceptions
+               `((declaim (type (simple-array fixnum (*)) ,decoder-table))
+                 (defglobal ,decoder-table
+                     ,(make-array 256 :element-type 'fixnum
+                                      :initial-contents
+                                      (loop for octet below 256
+                                            collect
+                                               (let ((pair (assoc octet exceptions)))
+                                                 (cond (pair
+                                                        (or (second pair) -1))
+                                                       (t
+                                                        octet))))))
+                 (declaim (type (simple-array char-code (*)) ,encoder-table))
+                 (defglobal ,encoder-table
+                     ,(make-array (length sorted-lookup-table)
+                                  :element-type 'char-code
+                                  :initial-contents sorted-lookup-table))))
+           (define-unibyte-decoder ,name (octet)
+             ,(cond (holes
+                     `(let ((code (aref ,decoder-table octet)))
+                        (if (minusp code)
+                            (handle-error)
+                            code)))
+                    (exceptions
+                     `(aref ,decoder-table octet))
+                    (t
+                     'octet)))
+           (define-unibyte-encoder ,name (char-code)
+             ,(if exceptions
+                  `(if (< char-code ,lowest-non-equivalent-code)
+                       char-code
+                       ;; FIXME: Check performance
+                       (loop with low = 0
+                             with high = ,(- (length sorted-lookup-table) 2)
+                             while (< low high)
+                             do (let ((mid (logandc2 (truncate (+ low high 2) 2) 1)))
+                                  (if (< char-code (aref ,encoder-table mid))
+                                      (setf high (- mid 2))
+                                      (setf low mid)))
+                             finally (return (if (eql char-code (aref ,encoder-table low))
+                                                 (aref ,encoder-table (1+ low))
+                                                 (handle-error)))))
+                  'char-code)))))))
 
 (defun unibyte-decoded-length (src src-offset length limit code0 code1)
   (declare (system-area-pointer src)
@@ -671,5 +682,3 @@ Use macro SET-CHAR-CODE in the body to write to DST."
                 (go :more))
             :end)
            (values chars src-offset)))))
-
-

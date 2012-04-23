@@ -24,6 +24,7 @@
    (:file "encoding" :depends-on ("utils"))
    (:file "enc-ascii" :depends-on ("encoding"))
    (:file "enc-iso" :depends-on ("encoding"))
+   (:file "enc-dos" :depends-on ("encoding"))
    (:file "enc-utf8" :depends-on ("encoding"))
    (:file "enc-utf16" :depends-on ("encoding"))
    (:file "external-format" :depends-on ("encoding"))
