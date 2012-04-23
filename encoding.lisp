@@ -515,7 +515,9 @@ Use macro SET-CHAR-CODE in the body to write to DST."
          (lowest-non-equivalent-code
            (caar (sort (copy-seq exceptions) #'< :key #'first)))
          ;; Sort them for our lookup table.
-         (sorted-pairs (sort (subseq pairs lowest-non-equivalent-code)
+         (sorted-pairs (sort (if lowest-non-equivalent-code
+                                 (subseq pairs lowest-non-equivalent-code)
+                                 (copy-seq pairs))
                              #'< :key #'car))
          ;; Create the lookup table.
          (sorted-lookup-table
@@ -535,47 +537,88 @@ Use macro SET-CHAR-CODE in the body to write to DST."
                    (push (code-char low) chars))
                (setf low (car pair)
                      hi (car pair)))))
-      (setf repertoire (reverse (append (reverse chars) repertoire))))
+      (if (< low hi)
+          (push (cons low hi) repertoire)
+          (push (code-char low) chars))
+      (setf repertoire (reverse (append chars repertoire))))
     `(progn
-       (declaim (type (simple-array fixnum (*)) ,decoder-table))
-       (defglobal ,decoder-table
-           ,(make-array 256 :element-type 'fixnum
-                            :initial-contents
-                            (loop for octet below 256
-                                  collect
-                                     (let ((pair (assoc octet exceptions)))
-                                       (cond (pair
-                                              (or (second pair) -1))
-                                             (t
-                                              octet))))))
+       ,@(when exceptions
+           `((declaim (type (simple-array fixnum (*)) ,decoder-table))
+             (defglobal ,decoder-table
+                 ,(make-array 256 :element-type 'fixnum
+                                  :initial-contents
+                                  (loop for octet below 256
+                                        collect
+                                           (let ((pair (assoc octet exceptions)))
+                                             (cond (pair
+                                                    (or (second pair) -1))
+                                                   (t
+                                                    octet))))))
+             (declaim (type (simple-array char-code (*)) ,encoder-table))
+             (defglobal ,encoder-table
+                 ,(make-array (length sorted-lookup-table)
+                              :element-type 'char-code
+                              :initial-contents sorted-lookup-table))))
        (define-unibyte-decoder ,encoding (octet)
-         ,(if holes
-              `(let ((code (aref ,decoder-table octet)))
-                 (if (minusp code)
-                     (handle-error)
-                     code))
-              `(aref ,decoder-table octet)))
-       (declaim (type (simple-array char-code (*)) ,encoder-table))
-       (defglobal ,encoder-table
-           ,(make-array (length sorted-lookup-table)
-                         :element-type 'char-code
-                         :initial-contents sorted-lookup-table))
+         ,(cond (holes
+                 `(let ((code (aref ,decoder-table octet)))
+                    (if (minusp code)
+                        (handle-error)
+                        code)))
+                (exceptions
+                 `(aref ,decoder-table octet))
+                (t
+                 'octet)))
        (define-unibyte-encoder ,encoding (char-code)
-         (if (< char-code ,lowest-non-equivalent-code)
-             char-code
-             ;; FIXME: Check performance
-             (loop with low = 0
-                   with high = ,(- (length sorted-lookup-table) 2)
-                   while (< low high)
-                   do (let ((mid (logandc2 (truncate (+ low high 2) 2) 1)))
-                        (if (< char-code (aref ,encoder-table mid))
-                            (setf high (- mid 2))
-                            (setf low mid)))
-                   finally (return (if (eql char-code (aref ,encoder-table low))
-                                       (aref ,encoder-table (1+ low))
-                                       (handle-error))))))
+         ,(if exceptions
+              `(if (< char-code ,lowest-non-equivalent-code)
+                   char-code
+                   ;; FIXME: Check performance
+                   (loop with low = 0
+                         with high = ,(- (length sorted-lookup-table) 2)
+                         while (< low high)
+                         do (let ((mid (logandc2 (truncate (+ low high 2) 2) 1)))
+                              (if (< char-code (aref ,encoder-table mid))
+                                  (setf high (- mid 2))
+                                  (setf low mid)))
+                         finally (return (if (eql char-code (aref ,encoder-table low))
+                                             (aref ,encoder-table (1+ low))
+                                             (handle-error)))))
+              'char-code))
        (let ((encoding (find-character-encoding ,encoding)))
-         (setf (character-encoding-repertoire encoding) ',repertoire)))))
+         (setf (character-encoding-repertoire encoding) ',repertoire
+               (character-encoding-binary encoding) ,(not holes))))))
+
+(defmacro define-unibyte-mapping-from-file (name pathname)
+  (let ((exceptions nil)
+        (last -1))
+    (flet ((skip (line)
+             (or (zerop (length line))
+                 (eql #\# (char line 0))))
+           (parse (line)
+             (let* ((p (position #\tab line))
+                    (s1 (subseq line 0 p))
+                    (s2 (subseq line (1+ p) (position #\tab line :start (1+ p)))))
+               (setf (char s1 0) #\#
+                     (char s2 0) #\#)
+               (let ((n1 (read-from-string s1))
+                     (n2 (read-from-string s2)))
+                 (loop for hole from (1+ last) below n1
+                       do (push (list hole nil) exceptions))
+                 (setf last n1)
+                 (unless (eql n1 n2)
+                   (push (list n1 n2) exceptions))))))
+      (with-open-file (f (merge-pathnames pathname
+                                         (asdf:component-pathname
+                                          (asdf:find-system :sb-external-formats)))
+                        :external-format :ascii)
+       (loop for line = (read-line f nil nil)
+             while line
+             do (unless (skip line)
+                  (parse line))))
+      (loop for hole from (1+ last) below 256
+            do (push (list hole nil) exceptions)))
+    `(define-unibyte-mapping ,name ,@(reverse exceptions))))
 
 (defun unibyte-decoded-length (src src-offset length limit code0 code1)
   (declare (system-area-pointer src)

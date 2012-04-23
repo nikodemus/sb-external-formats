@@ -49,8 +49,9 @@ should feel free. Patches that move things along are welcome.
 
   - Documentation strings for encodings should say what languages / areas they
     are appropriate for.
-  - Full-name (mostly just the canonical name, but latin encodings should mention
-    both the latin name and the iso-name)
+  - Name external-format objects using the user-supplied name, and unless it is
+    the canonical name print the canonical name in parentheses when describing the
+    format.
   - Naming convention: case-insensitive strings?
 
 * Design
