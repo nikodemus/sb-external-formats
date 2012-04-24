@@ -20,6 +20,7 @@ do
     wget ftp://ftp.unicode.org/Public/MAPPINGS/VENDORS/MICSFT/WINDOWS/CP$p.TXT
 done
 
-rm -f KOI8-R.TXT
+rm -f KOI8-R.TXT KOI8-U.TXT
 
 wget ftp://ftp.unicode.org/Public/MAPPINGS/VENDORS/MISC/KOI8-R.TXT
+wget ftp://ftp.unicode.org/Public/MAPPINGS/VENDORS/MISC/KOI8-U.TXT
